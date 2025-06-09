@@ -1,0 +1,464 @@
+diff --git a/apps/web/lib/zodSchemas.ts b/apps/web/lib/zodSchemas.ts
+index 0000000..0000000
+--- a/apps/web/lib/zodSchemas.ts
++++ b/apps/web/lib/zodSchemas.ts
+@@ -2,4 +2,8 @@ import { z } from 'zod';
+ 
+ export const clientSchema = z.object({
+   name: z.string().min(3, 'Client name must be at least 3 characters')
++});
++
++export const reportSchema = z.object({
++  title: z.string().min(3, 'Report title must be at least 3 characters')
+ });
+diff --git a/packages/db/package.json b/packages/db/package.json
+index 0000000..0000000
+--- a/packages/db/package.json
++++ b/packages/db/package.json
+@@ -13,6 +13,10 @@
+     "./client": {
+       "import": "./src/client.ts",
+       "types": "./src/client.ts"
++    },
++    "./report": {
++      "import": "./src/report.ts",
++      "types": "./src/report.ts"
+     }
+   },
+   "scripts": {
+diff --git a/packages/db/src/client.ts b/packages/db/src/client.ts
+index 0000000..0000000
+--- a/packages/db/src/client.ts
++++ b/packages/db/src/client.ts
+@@ -30,3 +30,18 @@ export async function getAllClients() {
+     await session.close();
+   }
+ }
++
++export async function getClientWithReports(id: string) {
++  const driver = getDriver();
++  const session = driver.session();
++  
++  try {
++    const result = await session.run(
++      'MATCH (c:Client {id: $id}) OPTIONAL MATCH (r:Report)-[:BELONGS_TO]->(c) RETURN c {.*} as client, collect(r {.*}) as reports',
++      { id }
++    );
++    
++    return result.records[0] ? { client: result.records[0].get('client'), reports: result.records[0].get('reports') } : null;
++  } finally {
++    await session.close();
++  }
++}
+diff --git a/packages/db/src/report.ts b/packages/db/src/report.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/packages/db/src/report.ts
+@@ -0,0 +1,18 @@
++import { getDriver } from './index';
++
++export async function createReport(clientId: string, title: string) {
++  const driver = getDriver();
++  const session = driver.session();
++  
++  try {
++    const result = await session.run(
++      'MATCH (c:Client {id: $clientId}) ' +
++      'CREATE (r:Report {id: randomUUID(), title: $title, createdAt: datetime()}) ' +
++      'MERGE (c)<-[:BELONGS_TO]-(r) ' +
++      'RETURN r {.*} LIMIT 1',
++      { clientId, title }
++    );
++    
++    return result.records[0].get(0);
++  } finally {
++    await session.close();
++  }
++}
+diff --git a/apps/web/app/clients/[id]/page.tsx b/apps/web/app/clients/[id]/page.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/clients/[id]/page.tsx
+@@ -0,0 +1,62 @@
++'use client';
++
++import { useState } from 'react';
++import { Button } from '@/components/ui/button';
++import { Plus, ArrowLeft } from 'lucide-react';
++import Link from 'next/link';
++import useSWR from 'swr';
++import { ReportCard } from './_components/ReportCard';
++import { NewReportDialog } from './_components/NewReportDialog';
++
++const fetcher = (url: string) => fetch(url).then((res) => res.json());
++
++interface ClientDetailPageProps {
++  params: { id: string };
++}
++
++export default function ClientDetailPage({ params }: ClientDetailPageProps) {
++  const [isDialogOpen, setIsDialogOpen] = useState(false);
++  const { data, error, isLoading } = useSWR(`/api/clients/${params.id}`, fetcher);
++
++  if (isLoading) {
++    return (
++      <main className="container mx-auto p-6">
++        <div className="animate-pulse">
++          <div className="h-8 w-48 bg-gray-200 rounded mb-4"></div>
++          <div className="h-4 w-32 bg-gray-200 rounded"></div>
++        </div>
++      </main>
++    );
++  }
++
++  if (error || !data) {
++    return (
++      <main className="container mx-auto p-6">
++        <div className="text-center text-red-600">
++          Error loading client data
++        </div>
++      </main>
++    );
++  }
++
++  const { client, reports } = data;
++
++  return (
++    <main className="container mx-auto p-6">
++      <div className="flex items-center justify-between mb-8">
++        <div className="flex items-center gap-4">
++          <Link href="/">
++            <Button variant="outline" size="sm">
++              <ArrowLeft className="h-4 w-4 mr-2" />
++              Back
++            </Button>
++          </Link>
++          <h1 className="text-4xl font-bold">{client.name}</h1>
++        </div>
++        <Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2">
++          <Plus className="h-4 w-4" />
++          New Report
++        </Button>
++      </div>
++
++      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
++        {reports?.map((report: any) => (
++          <ReportCard key={report.id} report={report} />
++        ))}
++        {reports?.length === 0 && (
++          <div className="col-span-full text-center text-gray-500 py-8">
++            No reports yet. Create your first report!
++          </div>
++        )}
++      </div>
++
++      <NewReportDialog
++        clientId={params.id}
++        open={isDialogOpen}
++        onOpenChange={setIsDialogOpen}
++      />
++    </main>
++  );
++}
+diff --git a/apps/web/app/clients/[id]/_components/ReportCard.tsx b/apps/web/app/clients/[id]/_components/ReportCard.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/clients/[id]/_components/ReportCard.tsx
+@@ -0,0 +1,26 @@
++import { FileText, Calendar } from 'lucide-react';
++
++interface ReportCardProps {
++  report: {
++    id: string;
++    title: string;
++    createdAt: string;
++  };
++}
++
++export function ReportCard({ report }: ReportCardProps) {
++  const formatDate = (dateString: string) => {
++    return new Date(dateString).toLocaleDateString('en-US', {
++      year: 'numeric',
++      month: 'short',
++      day: 'numeric',
++    });
++  };
++
++  return (
++    <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
++      <div className="flex items-start gap-3">
++        <FileText className="h-5 w-5 text-blue-600 mt-1" />
++        <div className="flex-1">
++          <h3 className="font-semibold text-lg mb-2">{report.title}</h3>
++          <div className="flex items-center gap-2 text-sm text-gray-500">
++            <Calendar className="h-4 w-4" />
++            <span>{formatDate(report.createdAt)}</span>
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/apps/web/app/clients/[id]/_components/NewReportDialog.tsx b/apps/web/app/clients/[id]/_components/NewReportDialog.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/clients/[id]/_components/NewReportDialog.tsx
+@@ -0,0 +1,94 @@
++'use client';
++
++import { useState } from 'react';
++import { Button } from '@/components/ui/button';
++import {
++  Dialog,
++  DialogContent,
++  DialogHeader,
++  DialogTitle,
++  DialogFooter,
++} from '@/components/ui/dialog';
++import { Input } from '@/components/ui/input';
++import { Label } from '@/components/ui/label';
++import { mutate } from 'swr';
++
++interface NewReportDialogProps {
++  clientId: string;
++  open: boolean;
++  onOpenChange: (open: boolean) => void;
++}
++
++export function NewReportDialog({ clientId, open, onOpenChange }: NewReportDialogProps) {
++  const [title, setTitle] = useState('');
++  const [isSubmitting, setIsSubmitting] = useState(false);
++  const [error, setError] = useState('');
++
++  const handleSubmit = async (e: React.FormEvent) => {
++    e.preventDefault();
++    if (title.length < 3) {
++      setError('Report title must be at least 3 characters');
++      return;
++    }
++
++    setIsSubmitting(true);
++    setError('');
++
++    try {
++      const response = await fetch(`/api/clients/${clientId}/reports`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ title }),
++      });
++
++      if (!response.ok) {
++        const errorData = await response.json();
++        throw new Error(errorData.error || 'Failed to create report');
++      }
++
++      const { report } = await response.json();
++      
++      // Optimistic update
++      mutate(`/api/clients/${clientId}`, (current: any) => {
++        if (!current) return current;
++        return {
++          ...current,
++          reports: [...(current.reports || []), report]
++        };
++      }, false);
++      
++      setTitle('');
++      onOpenChange(false);
++    } catch (error) {
++      setError(error instanceof Error ? error.message : 'Unknown error');
++    } finally {
++      setIsSubmitting(false);
++    }
++  };
++
++  return (
++    <Dialog open={open} onOpenChange={onOpenChange}>
++      <DialogContent className="sm:max-w-[425px]">
++        <DialogHeader>
++          <DialogTitle>Create New Report</DialogTitle>
++        </DialogHeader>
++        <form onSubmit={handleSubmit}>
++          <div className="grid gap-4 py-4">
++            <div className="grid grid-cols-4 items-center gap-4">
++              <Label htmlFor="title" className="text-right">
++                Title
++              </Label>
++              <Input
++                id="title"
++                value={title}
++                onChange={(e) => setTitle(e.target.value)}
++                className="col-span-3"
++                placeholder="Enter report title..."
++                minLength={3}
++                required
++              />
++            </div>
++            {error && (
++              <div className="text-sm text-red-600 col-span-4">
++                {error}
++              </div>
++            )}
++          </div>
++          <DialogFooter>
++            <Button 
++              type="button" 
++              variant="outline" 
++              onClick={() => onOpenChange(false)}
++            >
++              Cancel
++            </Button>
++            <Button type="submit" disabled={isSubmitting}>
++              {isSubmitting ? 'Creating...' : 'Create Report'}
++            </Button>
++          </DialogFooter>
++        </form>
++      </DialogContent>
++    </Dialog>
++  );
++}
+diff --git a/apps/web/app/api/clients/[id]/route.ts b/apps/web/app/api/clients/[id]/route.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/api/clients/[id]/route.ts
+@@ -0,0 +1,21 @@
++import { NextResponse } from 'next/server';
++import { getClientWithReports } from '@research-os/db/client';
++
++export async function GET(
++  request: Request,
++  { params }: { params: { id: string } }
++) {
++  try {
++    const result = await getClientWithReports(params.id);
++    
++    if (!result) {
++      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
++    }
++
++    return NextResponse.json(result);
++  } catch (error) {
++    console.error('Error fetching client:', error);
++    return NextResponse.json(
++      { error: 'Internal server error' },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/apps/web/app/api/clients/[id]/reports/route.ts b/apps/web/app/api/clients/[id]/reports/route.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/api/clients/[id]/reports/route.ts
+@@ -0,0 +1,30 @@
++import { NextResponse } from 'next/server';
++import { reportSchema } from '@/lib/zodSchemas';
++import { createReport } from '@research-os/db/report';
++
++export async function POST(
++  request: Request,
++  { params }: { params: { id: string } }
++) {
++  try {
++    const body = await request.json();
++    
++    // Validate input with Zod
++    const result = reportSchema.safeParse(body);
++    if (!result.success) {
++      return NextResponse.json(
++        { error: 'Invalid input', details: result.error.errors },
++        { status: 400 }
++      );
++    }
++
++    const { title } = result.data;
++    const report = await createReport(params.id, title);
++
++    return NextResponse.json({ report }, { status: 201 });
++  } catch (error) {
++    console.error('Error creating report:', error);
++    return NextResponse.json(
++      { error: 'Internal server error' },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/apps/web/test/api.reports.test.ts b/apps/web/test/api.reports.test.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/test/api.reports.test.ts
+@@ -0,0 +1,66 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++
++// Mock the database report module before importing the route
++vi.mock('@research-os/db/report', () => ({
++  createReport: vi.fn(),
++}));
++
++// Import after mocking
++const { POST } = await import('../app/api/clients/[id]/reports/route');
++
++describe('/api/clients/[id]/reports POST', () => {
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should return 400 for invalid input (title too short)', async () => {
++    const request = new Request('http://localhost:3000/api/clients/test-id/reports', {
++      method: 'POST',
++      body: JSON.stringify({ title: 'ab' }),
++      headers: { 'Content-Type': 'application/json' },
++    });
++
++    const response = await POST(request, { params: { id: 'test-id' } });
++    const data = await response.json();
++
++    expect(response.status).toBe(400);
++    expect(data.error).toBe('Invalid input');
++    expect(data.details).toBeDefined();
++  });
++
++  it('should return 400 for missing title', async () => {
++    const request = new Request('http://localhost:3000/api/clients/test-id/reports', {
++      method: 'POST',
++      body: JSON.stringify({}),
++      headers: { 'Content-Type': 'application/json' },
++    });
++
++    const response = await POST(request, { params: { id: 'test-id' } });
++    const data = await response.json();
++
++    expect(response.status).toBe(400);
++    expect(data.error).toBe('Invalid input');
++  });
++
++  it('should return 201 for valid input', async () => {
++    const { createReport } = await import('@research-os/db/report');
++    
++    // Mock successful report creation
++    vi.mocked(createReport).mockResolvedValue({
++      id: 'test-report-123',
++      title: 'Test Report',
++      createdAt: '2024-01-01T00:00:00Z',
++    });
++
++    const request = new Request('http://localhost:3000/api/clients/test-id/reports', {
++      method: 'POST',
++      body: JSON.stringify({ title: 'Test Report' }),
++      headers: { 'Content-Type': 'application/json' },
++    });
++
++    const response = await POST(request, { params: { id: 'test-id' } });
++    const data = await response.json();
++
++    expect(response.status).toBe(201);
++    expect(data.report.title).toBe('Test Report');
++    expect(createReport).toHaveBeenCalledWith('test-id', 'Test Report');
++  });
++});

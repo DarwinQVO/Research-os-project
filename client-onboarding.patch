@@ -1,0 +1,715 @@
+diff --git a/apps/web/package.json b/apps/web/package.json
+index 0000000..0000000
+--- a/apps/web/package.json
++++ b/apps/web/package.json
+@@ -13,10 +13,15 @@
+   "dependencies": {
+     "@research-os/ai": "workspace:*",
+     "@research-os/db": "workspace:*",
++    "@radix-ui/react-dialog": "^1.0.5",
++    "@radix-ui/react-label": "^2.0.2",
++    "@radix-ui/react-slot": "^1.0.2",
+     "class-variance-authority": "^0.7.0",
+     "clsx": "^2.1.0",
++    "lucide-react": "^0.263.1",
+     "next": "14.2.3",
+     "react": "^18.3.1",
+     "react-dom": "^18.3.1",
++    "swr": "^2.2.4",
++    "zod": "^3.22.4",
+     "tailwind-merge": "^2.2.0",
+     "tailwindcss-animate": "^1.0.7"
+   },
+@@ -29,6 +34,8 @@
+     "eslint-config-next": "14.2.3",
+     "postcss": "^8.4.38",
+     "tailwindcss": "^3.4.3",
++    "@types/supertest": "^6.0.2",
++    "supertest": "^6.3.3",
+     "typescript": "^5.4.5"
+   },
+   "packageManager": "pnpm@8.15.1"
+diff --git a/package.json b/package.json
+index 0000000..0000000
+--- a/package.json
++++ b/package.json
+@@ -21,6 +21,8 @@
+     "eslint-plugin-react-hooks": "^4.6.2",
+     "prettier": "^3.2.5",
+     "turbo": "^1.13.3",
++    "@types/supertest": "^6.0.2",
++    "supertest": "^6.3.3",
+     "typescript": "^5.4.5",
+     "vitest": "^1.6.0"
+   },
+diff --git a/apps/web/components/ui/button.tsx b/apps/web/components/ui/button.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/components/ui/button.tsx
+@@ -0,0 +1,56 @@
++import * as React from "react"
++import { Slot } from "@radix-ui/react-slot"
++import { cva, type VariantProps } from "class-variance-authority"
++
++import { cn } from "@/lib/utils"
++
++const buttonVariants = cva(
++  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
++  {
++    variants: {
++      variant: {
++        default: "bg-primary text-primary-foreground hover:bg-primary/90",
++        destructive:
++          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
++        outline:
++          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
++        secondary:
++          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
++        ghost: "hover:bg-accent hover:text-accent-foreground",
++        link: "text-primary underline-offset-4 hover:underline",
++      },
++      size: {
++        default: "h-10 px-4 py-2",
++        sm: "h-9 rounded-md px-3",
++        lg: "h-11 rounded-md px-8",
++        icon: "h-10 w-10",
++      },
++    },
++    defaultVariants: {
++      variant: "default",
++      size: "default",
++    },
++  }
++)
++
++export interface ButtonProps
++  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
++    VariantProps<typeof buttonVariants> {
++  asChild?: boolean
++}
++
++const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
++  ({ className, variant, size, asChild = false, ...props }, ref) => {
++    const Comp = asChild ? Slot : "button"
++    return (
++      <Comp
++        className={cn(buttonVariants({ variant, size, className }))}
++        ref={ref}
++        {...props}
++      />
++    )
++  }
++)
++Button.displayName = "Button"
++
++export { Button, buttonVariants }
+diff --git a/apps/web/components/ui/dialog.tsx b/apps/web/components/ui/dialog.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/components/ui/dialog.tsx
+@@ -0,0 +1,122 @@
++"use client"
++
++import * as React from "react"
++import * as DialogPrimitive from "@radix-ui/react-dialog"
++import { X } from "lucide-react"
++
++import { cn } from "@/lib/utils"
++
++const Dialog = DialogPrimitive.Root
++
++const DialogTrigger = DialogPrimitive.Trigger
++
++const DialogPortal = DialogPrimitive.Portal
++
++const DialogClose = DialogPrimitive.Close
++
++const DialogOverlay = React.forwardRef<
++  React.ElementRef<typeof DialogPrimitive.Overlay>,
++  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
++>(({ className, ...props }, ref) => (
++  <DialogPrimitive.Overlay
++    ref={ref}
++    className={cn(
++      "fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
++      className
++    )}
++    {...props}
++  />
++))
++DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
++
++const DialogContent = React.forwardRef<
++  React.ElementRef<typeof DialogPrimitive.Content>,
++  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
++>(({ className, children, ...props }, ref) => (
++  <DialogPortal>
++    <DialogOverlay />
++    <DialogPrimitive.Content
++      ref={ref}
++      className={cn(
++        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
++        className
++      )}
++      {...props}
++    >
++      {children}
++      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
++        <X className="h-4 w-4" />
++        <span className="sr-only">Close</span>
++      </DialogPrimitive.Close>
++    </DialogPrimitive.Content>
++  </DialogPortal>
++))
++DialogContent.displayName = DialogPrimitive.Content.displayName
++
++const DialogHeader = ({
++  className,
++  ...props
++}: React.HTMLAttributes<HTMLDivElement>) => (
++  <div
++    className={cn(
++      "flex flex-col space-y-1.5 text-center sm:text-left",
++      className
++    )}
++    {...props}
++  />
++)
++DialogHeader.displayName = "DialogHeader"
++
++const DialogFooter = ({
++  className,
++  ...props
++}: React.HTMLAttributes<HTMLDivElement>) => (
++  <div
++    className={cn(
++      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
++      className
++    )}
++    {...props}
++  />
++)
++DialogFooter.displayName = "DialogFooter"
++
++const DialogTitle = React.forwardRef<
++  React.ElementRef<typeof DialogPrimitive.Title>,
++  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
++>(({ className, ...props }, ref) => (
++  <DialogPrimitive.Title
++    ref={ref}
++    className={cn(
++      "text-lg font-semibold leading-none tracking-tight",
++      className
++    )}
++    {...props}
++  />
++))
++DialogTitle.displayName = DialogPrimitive.Title.displayName
++
++const DialogDescription = React.forwardRef<
++  React.ElementRef<typeof DialogPrimitive.Description>,
++  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
++>(({ className, ...props }, ref) => (
++  <DialogPrimitive.Description
++    ref={ref}
++    className={cn("text-sm text-muted-foreground", className)}
++    {...props}
++  />
++))
++DialogDescription.displayName = DialogPrimitive.Description.displayName
++
++export {
++  Dialog,
++  DialogPortal,
++  DialogOverlay,
++  DialogClose,
++  DialogTrigger,
++  DialogContent,
++  DialogHeader,
++  DialogFooter,
++  DialogTitle,
++  DialogDescription,
++}
+diff --git a/apps/web/components/ui/input.tsx b/apps/web/components/ui/input.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/components/ui/input.tsx
+@@ -0,0 +1,25 @@
++import * as React from "react"
++
++import { cn } from "@/lib/utils"
++
++export interface InputProps
++  extends React.InputHTMLAttributes<HTMLInputElement> {}
++
++const Input = React.forwardRef<HTMLInputElement, InputProps>(
++  ({ className, type, ...props }, ref) => {
++    return (
++      <input
++        type={type}
++        className={cn(
++          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
++          className
++        )}
++        ref={ref}
++        {...props}
++      />
++    )
++  }
++)
++Input.displayName = "Input"
++
++export { Input }
+diff --git a/apps/web/components/ui/label.tsx b/apps/web/components/ui/label.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/components/ui/label.tsx
+@@ -0,0 +1,23 @@
++"use client"
++
++import * as React from "react"
++import * as LabelPrimitive from "@radix-ui/react-label"
++import { cva, type VariantProps } from "class-variance-authority"
++
++import { cn } from "@/lib/utils"
++
++const labelVariants = cva(
++  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
++)
++
++const Label = React.forwardRef<
++  React.ElementRef<typeof LabelPrimitive.Root>,
++  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
++    VariantProps<typeof labelVariants>
++>(({ className, ...props }, ref) => (
++  <LabelPrimitive.Root
++    ref={ref}
++    className={cn(labelVariants(), className)}
++    {...props}
++  />
++))
++Label.displayName = LabelPrimitive.Root.displayName
++
++export { Label }
+diff --git a/apps/web/lib/utils.ts b/apps/web/lib/utils.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/lib/utils.ts
+@@ -0,0 +1,6 @@
++import { type ClassValue, clsx } from "clsx"
++import { twMerge } from "tailwind-merge"
++
++export function cn(...inputs: ClassValue[]) {
++  return twMerge(clsx(inputs))
++}
+diff --git a/apps/web/lib/zodSchemas.ts b/apps/web/lib/zodSchemas.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/lib/zodSchemas.ts
+@@ -0,0 +1,5 @@
++import { z } from 'zod';
++
++export const clientSchema = z.object({
++  name: z.string().min(3, 'Client name must be at least 3 characters')
++});
+diff --git a/apps/web/app/clients/_components/ClientCard.tsx b/apps/web/app/clients/_components/ClientCard.tsx
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/clients/_components/ClientCard.tsx
+@@ -0,0 +1,19 @@
++import Link from 'next/link';
++
++interface ClientCardProps {
++  id: string;
++  name: string;
++}
++
++export function ClientCard({ id, name }: ClientCardProps) {
++  return (
++    <div className="border rounded-lg p-4 hover:shadow-md transition-shadow">
++      <h3 className="font-semibold text-lg mb-2">{name}</h3>
++      <Link 
++        href={`/clients/${id}`}
++        className="text-blue-600 hover:text-blue-800 text-sm"
++      >
++        View Details →
++      </Link>
++    </div>
++  );
++}
+diff --git a/apps/web/app/api/clients/route.ts b/apps/web/app/api/clients/route.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/app/api/clients/route.ts
+@@ -0,0 +1,58 @@
++import { NextResponse } from 'next/server';
++import { clientSchema } from '@/lib/zodSchemas';
++import { createClient, getAllClients } from '@research-os/db/client';
++import { randomUUID } from 'crypto';
++
++export async function POST(request: Request) {
++  try {
++    const body = await request.json();
++    
++    // Validate input with Zod
++    const result = clientSchema.safeParse(body);
++    if (!result.success) {
++      return NextResponse.json(
++        { error: 'Invalid input', details: result.error.errors },
++        { status: 400 }
++      );
++    }
++
++    // Generate unique ID
++    const id = randomUUID();
++    const { name } = result.data;
++
++    // Create client in Neo4j
++    const client = await createClient(id, name);
++
++    return NextResponse.json(
++      { id: client.id, name: client.name },
++      { status: 201 }
++    );
++  } catch (error) {
++    console.error('Error creating client:', error);
++    return NextResponse.json(
++      { error: 'Internal server error' },
++      { status: 500 }
++    );
++  }
++}
++
++export async function GET() {
++  try {
++    const clients = await getAllClients();
++    return NextResponse.json(clients);
++  } catch (error) {
++    console.error('Error fetching clients:', error);
++    return NextResponse.json(
++      { error: 'Internal server error' },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/apps/web/app/page.tsx b/apps/web/app/page.tsx
+index 0000000..0000000
+--- a/apps/web/app/page.tsx
++++ b/apps/web/app/page.tsx
+@@ -1,9 +1,81 @@
++'use client';
++
++import { useState } from 'react';
++import { Button } from '@/components/ui/button';
++import { 
++  Dialog, 
++  DialogContent, 
++  DialogHeader, 
++  DialogTitle, 
++  DialogFooter 
++} from '@/components/ui/dialog';
++import { Input } from '@/components/ui/input';
++import { Label } from '@/components/ui/label';
++import { ClientCard } from './clients/_components/ClientCard';
++import { Plus } from 'lucide-react';
++import useSWR, { mutate } from 'swr';
++
++const fetcher = (url: string) => fetch(url).then((res) => res.json());
++
+ export default function Home() {
++  const [isDialogOpen, setIsDialogOpen] = useState(false);
++  const [clientName, setClientName] = useState('');
++  const [isSubmitting, setIsSubmitting] = useState(false);
++  const [error, setError] = useState('');
++
++  const { data: clients, error: fetchError } = useSWR('/api/clients', fetcher);
++
++  const handleSubmit = async (e: React.FormEvent) => {
++    e.preventDefault();
++    if (clientName.length < 3) {
++      setError('Client name must be at least 3 characters');
++      return;
++    }
++
++    setIsSubmitting(true);
++    setError('');
++
++    try {
++      const response = await fetch('/api/clients', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ name: clientName }),
++      });
++
++      if (!response.ok) {
++        const errorData = await response.json();
++        throw new Error(errorData.error || 'Failed to create client');
++      }
++
++      const newClient = await response.json();
++      
++      // Optimistic update
++      mutate('/api/clients', (current: any[]) => [...(current || []), newClient], false);
++      
++      setClientName('');
++      setIsDialogOpen(false);
++    } catch (error) {
++      setError(error instanceof Error ? error.message : 'Unknown error');
++    } finally {
++      setIsSubmitting(false);
++    }
++  };
++
+   return (
+-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+-      <div className="text-center">
+-        <h1 className="text-4xl font-bold mb-4">Research OS running ✅</h1>
++    <main className="container mx-auto p-6">
++      <div className="flex justify-between items-center mb-8">
++        <h1 className="text-4xl font-bold">Research OS</h1>
++        <Button onClick={() => setIsDialogOpen(true)} className="flex items-center gap-2">
++          <Plus className="h-4 w-4" />
++          New Client
++        </Button>
+       </div>
++
++      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
++        {clients?.map((client: any) => (
++          <ClientCard key={client.id} id={client.id} name={client.name} />
++        ))}
++      </div>
++
++      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
++        <DialogContent className="sm:max-w-[425px]">
++          <DialogHeader>
++            <DialogTitle>Create New Client</DialogTitle>
++          </DialogHeader>
++          <form onSubmit={handleSubmit}>
++            <div className="grid gap-4 py-4">
++              <div className="grid grid-cols-4 items-center gap-4">
++                <Label htmlFor="name" className="text-right">
++                  Name
++                </Label>
++                <Input
++                  id="name"
++                  value={clientName}
++                  onChange={(e) => setClientName(e.target.value)}
++                  className="col-span-3"
++                  placeholder="Enter client name..."
++                  minLength={3}
++                  required
++                />
++              </div>
++              {error && (
++                <div className="text-sm text-red-600 col-span-4">
++                  {error}
++                </div>
++              )}
++            </div>
++            <DialogFooter>
++              <Button 
++                type="button" 
++                variant="outline" 
++                onClick={() => setIsDialogOpen(false)}
++              >
++                Cancel
++              </Button>
++              <Button type="submit" disabled={isSubmitting}>
++                {isSubmitting ? 'Creating...' : 'Create Client'}
++              </Button>
++            </DialogFooter>
++          </form>
++        </DialogContent>
++      </Dialog>
+     </main>
+   );
+ }
+diff --git a/packages/db/src/client.ts b/packages/db/src/client.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/packages/db/src/client.ts
+@@ -0,0 +1,35 @@
++import { getDriver } from './index';
++
++export async function createClient(id: string, name: string) {
++  const driver = getDriver();
++  const session = driver.session();
++  
++  try {
++    const result = await session.run(
++      'CREATE (c:Client {id: $id, name: $name}) RETURN c {.*} LIMIT 1',
++      { id, name }
++    );
++    
++    return result.records[0].get(0);
++  } finally {
++    await session.close();
++  }
++}
++
++export async function getAllClients() {
++  const driver = getDriver();
++  const session = driver.session();
++  
++  try {
++    const result = await session.run(
++      'MATCH (c:Client) RETURN c {.*} ORDER BY c.name'
++    );
++    
++    return result.records.map(record => record.get(0));
++  } finally {
++    await session.close();
++  }
++}
+diff --git a/apps/web/test/api.clients.test.ts b/apps/web/test/api.clients.test.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/apps/web/test/api.clients.test.ts
+@@ -0,0 +1,75 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++import { POST } from '../app/api/clients/route';
++import { NextRequest } from 'next/server';
++
++// Mock the database client module
++vi.mock('@research-os/db/client', () => ({
++  createClient: vi.fn(),
++  getAllClients: vi.fn(),
++}));
++
++// Mock crypto module
++vi.mock('crypto', () => ({
++  randomUUID: vi.fn(() => 'test-uuid-123'),
++}));
++
++describe('/api/clients POST', () => {
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should return 400 for invalid input (name too short)', async () => {
++    const request = new NextRequest('http://localhost:3000/api/clients', {
++      method: 'POST',
++      body: JSON.stringify({ name: 'ab' }),
++      headers: { 'Content-Type': 'application/json' },
++    });
++
++    const response = await POST(request);
++    const data = await response.json();
++
++    expect(response.status).toBe(400);
++    expect(data.error).toBe('Invalid input');
++    expect(data.details).toBeDefined();
++  });
++
++  it('should return 400 for missing name', async () => {
++    const request = new NextRequest('http://localhost:3000/api/clients', {
++      method: 'POST',
++      body: JSON.stringify({}),
++      headers: { 'Content-Type': 'application/json' },
++    });
++
++    const response = await POST(request);
++    const data = await response.json();
++
++    expect(response.status).toBe(400);
++    expect(data.error).toBe('Invalid input');
++  });
++
++  it('should return 201 for valid input', async () => {
++    const { createClient } = await import('@research-os/db/client');
++    
++    // Mock successful client creation
++    vi.mocked(createClient).mockResolvedValue({
++      id: 'test-uuid-123',
++      name: 'Test Client',
++    });
++
++    const request = new NextRequest('http://localhost:3000/api/clients', {
++      method: 'POST',
++      body: JSON.stringify({ name: 'Test Client' }),
++      headers: { 'Content-Type': 'application/json' },
++    });
++
++    const response = await POST(request);
++    const data = await response.json();
++
++    expect(response.status).toBe(201);
++    expect(data.id).toBe('test-uuid-123');
++    expect(data.name).toBe('Test Client');
++    expect(createClient).toHaveBeenCalledWith('test-uuid-123', 'Test Client');
++  });
++});
+diff --git a/apps/web/app/globals.css b/apps/web/app/globals.css
+index 0000000..0000000
+--- a/apps/web/app/globals.css
++++ b/apps/web/app/globals.css
+@@ -1,3 +1,73 @@
+ @tailwind base;
+ @tailwind components;
+ @tailwind utilities;
++
++@layer base {
++  :root {
++    --background: 0 0% 100%;
++    --foreground: 222.2 84% 4.9%;
++    --card: 0 0% 100%;
++    --card-foreground: 222.2 84% 4.9%;
++    --popover: 0 0% 100%;
++    --popover-foreground: 222.2 84% 4.9%;
++    --primary: 221.2 83.2% 53.3%;
++    --primary-foreground: 210 40% 98%;
++    --secondary: 210 40% 96%;
++    --secondary-foreground: 222.2 84% 4.9%;
++    --muted: 210 40% 96%;
++    --muted-foreground: 215.4 16.3% 46.9%;
++    --accent: 210 40% 96%;
++    --accent-foreground: 222.2 84% 4.9%;
++    --destructive: 0 84.2% 60.2%;
++    --destructive-foreground: 210 40% 98%;
++    --border: 214.3 31.8% 91.4%;
++    --input: 214.3 31.8% 91.4%;
++    --ring: 221.2 83.2% 53.3%;
++    --radius: 0.5rem;
++  }
++
++  .dark {
++    --background: 222.2 84% 4.9%;
++    --foreground: 210 40% 98%;
++    --card: 222.2 84% 4.9%;
++    --card-foreground: 210 40% 98%;
++    --popover: 222.2 84% 4.9%;
++    --popover-foreground: 210 40% 98%;
++    --primary: 217.2 91.2% 59.8%;
++    --primary-foreground: 222.2 84% 4.9%;
++    --secondary: 217.2 32.6% 17.5%;
++    --secondary-foreground: 210 40% 98%;
++    --muted: 217.2 32.6% 17.5%;
++    --muted-foreground: 215 20.2% 65.1%;
++    --accent: 217.2 32.6% 17.5%;
++    --accent-foreground: 210 40% 98%;
++    --destructive: 0 62.8% 30.6%;
++    --destructive-foreground: 210 40% 98%;
++    --border: 217.2 32.6% 17.5%;
++    --input: 217.2 32.6% 17.5%;
++    --ring: 224.3 76.3% 94.1%;
++  }
++}
++
++@layer base {
++  * {
++    @apply border-border;
++  }
++  body {
++    @apply bg-background text-foreground;
++  }
++}

@@ -1,0 +1,48 @@
+{
+  "name": "@research-os/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./client": {
+      "import": "./src/client.ts",
+      "types": "./src/client.ts"
+    },
+    "./report": {
+      "import": "./src/report.ts",
+      "types": "./src/report.ts"
+    },
+    "./entity": {
+      "import": "./src/entity.ts",
+      "types": "./src/entity.ts"
+    },
+    "./quote": {
+      "import": "./src/quote.ts",
+      "types": "./src/quote.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "type-check": "tsc --noEmit",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "neo4j-driver": "^5.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5"
+  },
+  "peerDependencies": {
+    "neo4j-driver": "^5.0.0",
+    "typescript": "^5.0.0"
+  },
+  "packageManager": "pnpm@8.15.1"
+}

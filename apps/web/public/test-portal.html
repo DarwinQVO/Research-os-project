@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Quote Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        input, button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .error {
+            color: red;
+            background: #fee;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: green;
+            background: #efe;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        pre {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Portal Quote Debug Tool</h1>
+    
+    <div class="section">
+        <h2>1. Test Parameters</h2>
+        <input type="text" id="clientId" placeholder="Client ID" value="">
+        <input type="text" id="reportId" placeholder="Report ID" value="">
+    </div>
+
+    <div class="section">
+        <h2>2. Test Flow</h2>
+        <button onclick="testFlow()">Test Complete Flow</button>
+        <button onclick="createTestQuote()">Create Test Quote</button>
+        <div id="flowResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Portal API Test</h2>
+        <button onclick="testPortalAPI()">Test Portal API</button>
+        <div id="portalResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>4. Debug Info</h2>
+        <button onclick="getDebugInfo()">Get Debug Info</button>
+        <div id="debugResult"></div>
+    </div>
+
+    <script>
+        function getParams() {
+            return {
+                clientId: document.getElementById('clientId').value,
+                reportId: document.getElementById('reportId').value
+            };
+        }
+
+        async function testFlow() {
+            const { clientId, reportId } = getParams();
+            const resultDiv = document.getElementById('flowResult');
+            
+            if (!clientId || !reportId) {
+                resultDiv.innerHTML = '<div class="error">Please enter both Client ID and Report ID</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div>Testing flow...</div>';
+                const response = await fetch(`/api/test-quote-flow?clientId=${clientId}&reportId=${reportId}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'API error');
+                }
+
+                resultDiv.innerHTML = `
+                    <div class="success">Flow test complete</div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function createTestQuote() {
+            const { clientId, reportId } = getParams();
+            const resultDiv = document.getElementById('flowResult');
+            
+            if (!clientId || !reportId) {
+                resultDiv.innerHTML = '<div class="error">Please enter both Client ID and Report ID</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div>Creating test quote...</div>';
+                const response = await fetch(`/api/test-quote-flow?action=create-test-quote&clientId=${clientId}&reportId=${reportId}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'API error');
+                }
+
+                resultDiv.innerHTML = `
+                    <div class="success">Test quote created successfully</div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testPortalAPI() {
+            const { clientId, reportId } = getParams();
+            const resultDiv = document.getElementById('portalResult');
+            
+            if (!clientId || !reportId) {
+                resultDiv.innerHTML = '<div class="error">Please enter both Client ID and Report ID</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div>Testing portal API...</div>';
+                const url = `/portal/clients/${clientId}/reports/${reportId}/quotes`;
+                console.log('Fetching from:', url);
+                
+                const response = await fetch(url);
+                const responseText = await response.text();
+                
+                console.log('Response status:', response.status);
+                console.log('Response text:', responseText);
+                
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    throw new Error(`Invalid JSON response: ${responseText}`);
+                }
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'API error');
+                }
+
+                resultDiv.innerHTML = `
+                    <div class="success">Portal API test successful</div>
+                    <p>Found ${Array.isArray(data) ? data.length : 0} quotes</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">Error: ${error.message}</div>
+                    <p>Check browser console for more details</p>
+                `;
+            }
+        }
+
+        async function getDebugInfo() {
+            const { clientId, reportId } = getParams();
+            const resultDiv = document.getElementById('debugResult');
+            
+            if (!clientId || !reportId) {
+                resultDiv.innerHTML = '<div class="error">Please enter both Client ID and Report ID</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div>Getting debug info...</div>';
+                const response = await fetch(`/api/debug-quotes?clientId=${clientId}&reportId=${reportId}`);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'API error');
+                }
+
+                resultDiv.innerHTML = `
+                    <div class="success">Debug info retrieved</div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
