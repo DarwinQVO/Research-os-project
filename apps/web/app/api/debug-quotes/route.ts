@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         author: 'Test Author',
         source: 'Test Source',
         sourceUrl: 'https://example.com',
-        tags: ['test', 'debug'],
+        date: 'Test Date',
         isPublic: true
       });
       

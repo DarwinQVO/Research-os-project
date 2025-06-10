@@ -44,7 +44,7 @@ export const quoteInsertSchema = z.object({
       return undefined;
     }
   }),
-  tags: z.array(z.string()).default([]),
+  date: z.string().max(20).optional().transform(val => val || undefined),
   isPublic: z.boolean().default(false),
   isApproved: z.boolean().default(false),
 });

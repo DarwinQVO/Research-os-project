@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,9 +12,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { SimpleMarkdownTextarea } from './SimpleMarkdownTextarea';
 import { Switch } from '@/components/ui/switch';
-import { TagsInput } from '@/app/clients/_components/TagsInput';
 import { mutate } from 'swr';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface AddQuoteDialogProps {
   reportId: string;
@@ -25,23 +27,81 @@ interface AddQuoteDialogProps {
 export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogProps) {
   const [formData, setFormData] = useState({
     text: '',
-    shortText: '',
     author: '',
     source: '',
     sourceUrl: '',
-    tags: [] as string[],
+    date: '',
     isPublic: false,
+    isApproved: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const extractFirstUrl = useCallback((text: string) => {
+    // First try to find markdown links: [text](url)
+    // This regex handles URLs with encoded parentheses
+    const markdownLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+(?:%28[^%29]*%29)?[^\s\)]*)\)/;
+    const markdownMatch = text.match(markdownLinkRegex);
+    
+    if (markdownMatch) {
+      try {
+        let url = markdownMatch[2];
+        // Decode the URL for display/use
+        url = url.replace(/%28/g, '(').replace(/%29/g, ')');
+        return {
+          url: url,
+          domain: new URL(url).hostname
+        };
+      } catch (e) {
+        console.error('Invalid URL in markdown link:', e);
+      }
+    }
+    
+    // If no markdown link, look for plain URLs
+    const plainUrlRegex = /https?:\/\/[^\s]+/;
+    const plainMatch = text.match(plainUrlRegex);
+    
+    if (plainMatch) {
+      try {
+        return {
+          url: plainMatch[0],
+          domain: new URL(plainMatch[0]).hostname
+        };
+      } catch (e) {
+        console.error('Invalid plain URL:', e);
+      }
+    }
+    
+    return null;
+  }, []);
+
   const handleTextChange = (text: string) => {
     setFormData(prev => ({
       ...prev,
-      text,
-      shortText: prev.shortText || text.slice(0, 120)
+      text
     }));
   };
+
+  const handleTextBlur = () => {
+    // No longer extract URLs from quote text
+    // Source URL only comes from author field
+  };
+
+  const handleAuthorBlur = () => {
+    console.log('handleAuthorBlur called with author:', formData.author);
+    if (!formData.sourceUrl && formData.author) {
+      const extracted = extractFirstUrl(formData.author);
+      console.log('Extracted URL data from author:', extracted);
+      if (extracted) {
+        setFormData(prev => ({
+          ...prev,
+          sourceUrl: extracted.url,
+          source: prev.source || extracted.domain
+        }));
+      }
+    }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,10 +111,6 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
       return;
     }
     
-    if (formData.shortText.length < 5) {
-      setError('Short text must be at least 5 characters');
-      return;
-    }
 
     setIsSubmitting(true);
     setError('');
@@ -63,7 +119,10 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
       const response = await fetch(`/api/reports/${reportId}/quotes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          shortText: formData.text.slice(0, 300) // Auto-generate shortText from text
+        }),
       });
 
       if (!response.ok) {
@@ -82,12 +141,12 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
       // Reset form
       setFormData({
         text: '',
-        shortText: '',
         author: '',
         source: '',
         sourceUrl: '',
-        tags: [],
+        date: '',
         isPublic: false,
+        isApproved: false,
       });
       
       onOpenChange(false);
@@ -111,36 +170,72 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="text">Quote text *</Label>
-              <Textarea
-                id="text"
+              <SimpleMarkdownTextarea
                 value={formData.text}
-                onChange={(e) => handleTextChange(e.target.value)}
-                placeholder="Enter the full quote text..."
-                className="min-h-[100px]"
+                onChange={handleTextChange}
+                onBlur={handleTextBlur}
+                placeholder="Enter the full quote text... (e.g. [text](url))"
+                minHeight="min-h-[100px]"
                 required
               />
+              {formData.text && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200">
+                  <p className="text-xs font-medium text-gray-600 mb-2">Preview:</p>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <p className="text-sm">{children}</p>,
+                      a: ({ href, children }) => (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 underline"
+                        >
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
+                    {formData.text}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
             
-            <div className="grid gap-2">
-              <Label htmlFor="shortText">Short version *</Label>
-              <Input
-                id="shortText"
-                value={formData.shortText}
-                onChange={(e) => setFormData(prev => ({ ...prev, shortText: e.target.value }))}
-                placeholder="Short version for display..."
-                maxLength={300}
-                required
-              />
-            </div>
             
             <div className="grid gap-2">
               <Label htmlFor="author">Author</Label>
-              <Input
-                id="author"
+              <SimpleMarkdownTextarea
                 value={formData.author}
-                onChange={(e) => setFormData(prev => ({ ...prev, author: e.target.value }))}
-                placeholder="Quote author..."
+                onChange={(author) => setFormData(prev => ({ ...prev, author }))}
+                onBlur={handleAuthorBlur}
+                placeholder="Quote author... (e.g. [name](profile-url))"
+                minHeight="min-h-[60px]"
               />
+              {formData.author && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200">
+                  <p className="text-xs font-medium text-gray-600 mb-2">Preview:</p>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <p className="font-medium text-lg">{children}</p>,
+                      a: ({ href, children }) => (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 underline"
+                        >
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
+                    {formData.author}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
             
             <div className="grid gap-2">
@@ -165,21 +260,34 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
             </div>
             
             <div className="grid gap-2">
-              <Label>Tags</Label>
-              <TagsInput
-                value={formData.tags}
-                onChange={(tags) => setFormData(prev => ({ ...prev, tags }))}
-                placeholder="Type and press Enter to add tags..."
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                value={formData.date}
+                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                placeholder="May 2025 • 05/2025 • etc"
+                maxLength={20}
               />
             </div>
             
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="isPublic"
-                checked={formData.isPublic}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
-              />
-              <Label htmlFor="isPublic">Publish to Client</Label>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="isApproved"
+                  checked={formData.isApproved}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isApproved: checked }))}
+                />
+                <Label htmlFor="isApproved">Mark as Approved</Label>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="isPublic"
+                  checked={formData.isPublic}
+                  onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isPublic: checked }))}
+                />
+                <Label htmlFor="isPublic">Publish to Client</Label>
+              </div>
             </div>
             
             {error && (

@@ -6,7 +6,7 @@ interface QuoteInput {
   author?: string;
   source?: string;
   sourceUrl?: string;
-  tags: string[];
+  date?: string;
   isPublic: boolean;
   isApproved?: boolean;
 }
@@ -26,7 +26,7 @@ export async function createQuote(reportId: string, data: QuoteInput) {
        CREATE (q:Quote {
          id: randomUUID(), shortText: $shortText, text: $text,
          author: $author, source: $source, sourceUrl: $sourceUrl,
-         tags: $tags, isPublic: $isPublic, isApproved: $isApproved,
+         date: $date, isPublic: $isPublic, isApproved: $isApproved,
          embedding: [0.0], createdAt: datetime()
        })
        MERGE (r)-[:HAS_QUOTE]->(q)
@@ -49,7 +49,7 @@ export async function getAllQuotesWithStatus(
   author?: string;
   source?: string;
   sourceUrl?: string;
-  tags: string[];
+  date?: string;
   createdAt: string;
   status: 'Published' | 'Approved' | 'Pending';
   isPublic: boolean;
@@ -65,7 +65,7 @@ export async function getAllQuotesWithStatus(
     const result = await session.run(
       `MATCH (c:Client {id: $cid})<-[:BELONGS_TO]-(r:Report {id: $rid})
        -[:HAS_QUOTE]->(q:Quote)
-       RETURN q { .id, .shortText, .author, .source, .sourceUrl, .tags, .isPublic, .isApproved,
+       RETURN q { .id, .shortText, .author, .source, .sourceUrl, .date, .isPublic, .isApproved,
          createdAt: toString(q.createdAt),
          status: CASE 
            WHEN q.isPublic = true THEN 'Published'
@@ -92,7 +92,7 @@ export async function getPublishedQuotes(
   author?: string;
   source?: string;
   sourceUrl?: string;
-  tags: string[];
+  date?: string;
   createdAt: string;
 }>> {
   const driver = getDriver();
@@ -121,7 +121,7 @@ export async function getPublishedQuotes(
        -[:HAS_QUOTE]->(q:Quote)
        WHERE q.isPublic = true
        RETURN q { .id, .shortText, .author, .source, .sourceUrl,
-         .tags, createdAt: toString(q.createdAt) } AS q
+         .date, createdAt: toString(q.createdAt) } AS q
        ORDER BY q.createdAt DESC`,
       { cid: clientId, rid: reportId }
     );
@@ -134,6 +134,26 @@ export async function getPublishedQuotes(
   } catch (error) {
     console.error('DB Error in getPublishedQuotes:', error);
     throw error;
+  } finally {
+    await session.close();
+  }
+}
+
+export async function updateQuote(id: string, updates: { isPublic?: boolean; isApproved?: boolean }) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    const setClause = Object.keys(updates)
+      .map(key => `q.${key} = $${key}`)
+      .join(', ');
+    
+    const result = await session.run(
+      `MATCH (q:Quote {id: $id}) SET ${setClause} RETURN q {.*} LIMIT 1`,
+      { id, ...updates }
+    );
+    
+    return result.records[0]?.get(0) || null;
   } finally {
     await session.close();
   }

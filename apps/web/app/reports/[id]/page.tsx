@@ -134,14 +134,19 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
       </div>
 
 
-      {/* Add Quote Section */}
-      <div className="flex justify-end mb-6">
+      {/* Actions Section */}
+      <div className="flex justify-end gap-2 mb-6">
+        <Link href={`/reports/${params.id}/quotes`}>
+          <Button variant="outline" className="flex items-center gap-2">
+            📚 View Quotes
+          </Button>
+        </Link>
         <Button 
           onClick={() => setIsAddQuoteOpen(true)}
           className="flex items-center gap-2"
         >
           <Plus className="h-4 w-4" />
-          Quote
+          Add Quote
         </Button>
       </div>
 
