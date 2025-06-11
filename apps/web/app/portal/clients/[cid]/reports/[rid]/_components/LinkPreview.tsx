@@ -176,7 +176,7 @@ export function LinkPreview({ sourceUrl, className = '' }: LinkPreviewProps) {
               (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
-          <span className="text-sm text-[color:var(--mymind-muted)]">{displayDomain}</span>
+          <span className="font-lora font-normal text-[16px] leading-[18px] text-metaMuted">{displayDomain}</span>
         </div>
         <a
           href={sourceUrl}

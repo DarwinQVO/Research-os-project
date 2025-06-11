@@ -3,12 +3,18 @@ import { getDriver } from './index';
 interface QuoteInput {
   shortText: string;
   text: string;
-  author?: string;
-  source?: string;
+  entityId: string;
+  sourceId: string;
   sourceUrl?: string;
   date?: string;
   isPublic: boolean;
   isApproved?: boolean;
+}
+
+// Legacy interface for backward compatibility
+interface LegacyQuoteInput extends Omit<QuoteInput, 'entityId' | 'sourceId'> {
+  author?: string;
+  source?: string;
 }
 
 export async function createQuote(reportId: string, data: QuoteInput) {
@@ -16,7 +22,51 @@ export async function createQuote(reportId: string, data: QuoteInput) {
   const session = driver.session();
   
   const quoteData = {
+    shortText: data.shortText,
+    text: data.text,
+    sourceUrl: data.sourceUrl,
+    date: data.date,
+    isPublic: data.isPublic || false,
+    isApproved: data.isApproved || false
+  };
+  
+  try {
+    const result = await session.run(
+      `MATCH (r:Report {id: $rid})
+       MATCH (e:Entity {id: $entityId})
+       MATCH (s:Source {id: $sourceId})
+       CREATE (q:Quote {
+         id: randomUUID(), shortText: $shortText, text: $text,
+         sourceUrl: $sourceUrl, date: $date, isPublic: $isPublic, 
+         isApproved: $isApproved,
+         embedding: [0.0], createdAt: datetime()
+       })
+       MERGE (r)-[:HAS_QUOTE]->(q)
+       MERGE (q)-[:QUOTE_OF]->(e)
+       MERGE (q)-[:CITES]->(s)
+       RETURN q {.*}`,
+      { 
+        rid: reportId,
+        entityId: data.entityId,
+        sourceId: data.sourceId,
+        ...quoteData 
+      }
+    );
+    
+    return result.records[0].get(0);
+  } finally {
+    await session.close();
+  }
+}
+
+// Legacy function for backward compatibility
+export async function createLegacyQuote(reportId: string, data: LegacyQuoteInput) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  const quoteData = {
     ...data,
+    isPublic: data.isPublic || false,
     isApproved: data.isApproved || false
   };
   
@@ -65,8 +115,12 @@ export async function getAllQuotesWithStatus(
     const result = await session.run(
       `MATCH (c:Client {id: $cid})<-[:BELONGS_TO]-(r:Report {id: $rid})
        -[:HAS_QUOTE]->(q:Quote)
+       OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
+       OPTIONAL MATCH (q)-[:CITES]->(s:Source)
        RETURN q { .id, .shortText, .author, .source, .sourceUrl, .date, .isPublic, .isApproved,
          createdAt: toString(q.createdAt),
+         speaker: e.name,
+         sourceTitle: s.title,
          status: CASE 
            WHEN q.isPublic = true THEN 'Published'
            WHEN q.isPublic = false AND q.isApproved = true THEN 'Approved' 
@@ -94,6 +148,8 @@ export async function getPublishedQuotes(
   sourceUrl?: string;
   date?: string;
   createdAt: string;
+  speaker?: string;
+  sourceTitle?: string;
 }>> {
   const driver = getDriver();
   const session = driver.session();
@@ -120,8 +176,12 @@ export async function getPublishedQuotes(
       `MATCH (c:Client {id: $cid})<-[:BELONGS_TO]-(r:Report {id: $rid})
        -[:HAS_QUOTE]->(q:Quote)
        WHERE q.isPublic = true
+       OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
+       OPTIONAL MATCH (q)-[:CITES]->(s:Source)
        RETURN q { .id, .shortText, .author, .source, .sourceUrl,
-         .date, createdAt: toString(q.createdAt) } AS q
+         .date, createdAt: toString(q.createdAt),
+         speaker: e.name,
+         sourceTitle: s.title } AS q
        ORDER BY q.createdAt DESC`,
       { cid: clientId, rid: reportId }
     );
@@ -139,21 +199,114 @@ export async function getPublishedQuotes(
   }
 }
 
-export async function updateQuote(id: string, updates: { isPublic?: boolean; isApproved?: boolean }) {
+export async function updateQuote(id: string, updates: { 
+  isPublic?: boolean; 
+  isApproved?: boolean;
+  shortText?: string;
+  text?: string;
+  sourceUrl?: string;
+  date?: string;
+  entityId?: string;
+  sourceId?: string;
+}) {
   const driver = getDriver();
   const session = driver.session();
   
   try {
-    const setClause = Object.keys(updates)
-      .map(key => `q.${key} = $${key}`)
-      .join(', ');
+    // Handle entity and source relationship updates separately
+    if (updates.entityId || updates.sourceId) {
+      // Remove old relationships
+      await session.run(
+        'MATCH (q:Quote {id: $id}) ' +
+        'OPTIONAL MATCH (q)-[r1:QUOTE_OF]->() ' +
+        'OPTIONAL MATCH (q)-[r2:CITES]->() ' +
+        'DELETE r1, r2',
+        { id }
+      );
+      
+      // Add new relationships
+      if (updates.entityId) {
+        await session.run(
+          'MATCH (q:Quote {id: $id}), (e:Entity {id: $entityId}) ' +
+          'MERGE (q)-[:QUOTE_OF]->(e)',
+          { id, entityId: updates.entityId }
+        );
+      }
+      
+      if (updates.sourceId) {
+        await session.run(
+          'MATCH (q:Quote {id: $id}), (s:Source {id: $sourceId}) ' +
+          'MERGE (q)-[:CITES]->(s)',
+          { id, sourceId: updates.sourceId }
+        );
+      }
+    }
     
+    // Update quote properties
+    const propUpdates = { ...updates };
+    delete propUpdates.entityId;
+    delete propUpdates.sourceId;
+    
+    if (Object.keys(propUpdates).length > 0) {
+      const setClause = Object.keys(propUpdates)
+        .map(key => `q.${key} = $${key}`)
+        .join(', ');
+      
+      const result = await session.run(
+        `MATCH (q:Quote {id: $id}) SET ${setClause} RETURN q {.*} LIMIT 1`,
+        { id, ...propUpdates }
+      );
+      
+      return result.records[0]?.get(0) || null;
+    }
+    
+    // If only relationships were updated, return the quote
     const result = await session.run(
-      `MATCH (q:Quote {id: $id}) SET ${setClause} RETURN q {.*} LIMIT 1`,
-      { id, ...updates }
+      'MATCH (q:Quote {id: $id}) RETURN q {.*} LIMIT 1',
+      { id }
     );
     
     return result.records[0]?.get(0) || null;
+  } finally {
+    await session.close();
+  }
+}
+
+export async function deleteQuote(id: string) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    await session.run(
+      'MATCH (q:Quote {id: $id}) ' +
+      'DETACH DELETE q',
+      { id }
+    );
+  } finally {
+    await session.close();
+  }
+}
+
+export async function getQuoteById(id: string) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      `MATCH (q:Quote {id: $id})
+       OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
+       OPTIONAL MATCH (q)-[:CITES]->(s:Source)
+       RETURN q { .*, 
+         speaker: e.name,
+         entityId: e.id,
+         sourceTitle: s.title,
+         sourceId: s.id,
+         createdAt: toString(q.createdAt)
+       } AS quote`,
+      { id }
+    );
+    
+    return result.records[0]?.get('quote') || null;
   } finally {
     await session.close();
   }

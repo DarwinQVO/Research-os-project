@@ -1,0 +1,249 @@
+diff --git a/apps/web/app/portal/portal-theme.css b/apps/web/app/portal/portal-theme.css
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/apps/web/app/portal/portal-theme.css
+@@ -0,0 +1,19 @@
++/* Portal theme overrides */
++:root {
++  --mymind-border: rgba(255, 255, 255, 0.1);
++  --mymind-panel: rgba(255, 255, 255, 0.05);
++  --mymind-text: rgba(255, 255, 255, 0.9);
++  --mymind-muted: rgba(255, 255, 255, 0.6);
++}
++
++/* smoother scrollbar only inside quote area */
++.quote-scroll::-webkit-scrollbar {
++  width: 6px;
++}
++.quote-scroll::-webkit-scrollbar-track {
++  background: transparent;
++}
++.quote-scroll::-webkit-scrollbar-thumb {
++  background: var(--mymind-border);
++  border-radius: 3px;
++}
+diff --git a/apps/web/app/portal/clients/[cid]/reports/[rid]/_components/QuoteDrawer.tsx b/apps/web/app/portal/clients/[cid]/reports/[rid]/_components/QuoteDrawer.tsx
+index 1234567..8901234 100644
+--- a/apps/web/app/portal/clients/[cid]/reports/[rid]/_components/QuoteDrawer.tsx
++++ b/apps/web/app/portal/clients/[cid]/reports/[rid]/_components/QuoteDrawer.tsx
+@@ -139,29 +139,40 @@ export function QuoteDrawer({
+               transition={{ duration: 0.25, ease: 'easeOut' }}
+             >
+               {/* Quote Content - Left Side */}
+-              <div className="bg-[#1e1e25] rounded-l-2xl flex flex-col justify-center items-center p-8 md:p-16 overflow-auto">
+-                <div className="max-w-3xl mx-auto text-center">
+-                  <blockquote className={`relative font-serif ${getQuoteTextSizeClasses((quote.text || quote.shortText).length)} leading-relaxed text-gray-100`}>
+-                    <div className="text-6xl text-[#45caff]/70 text-center mb-0" style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif'}}>‟</div>
+-                    <ReactMarkdown
+-                      remarkPlugins={[remarkGfm]}
+-                      components={{
+-                        p: ({ children }) => <p className="mb-0">{children}</p>,
+-                        a: ({ href, children }) => (
+-                          <a
+-                            href={href}
+-                            target="_blank"
+-                            rel="noopener noreferrer"
+-                            className="text-[#45caff] hover:text-[#45caff]/80 underline"
+-                          >
+-                            {children}
+-                          </a>
+-                        ),
+-                      }}
+-                    >
+-                      {quote.text || quote.shortText}
+-                    </ReactMarkdown>
+-                    <div className="text-6xl text-[#45caff]/70 text-center mt-6" style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif', transform: 'scaleX(-1)'}}>‟</div>
+-                  </blockquote>
++              <div className="bg-[#1e1e25] rounded-l-2xl flex flex-col justify-center items-center p-8 md:p-16 h-full">
++                <div className="max-w-3xl mx-auto text-center flex flex-col h-full justify-center">
++                  {/* Speaker title block */}
++                  {quote.author && (
++                    <div className="mx-auto mb-4 max-w-[260px] px-4 py-2 rounded-lg border border-[color:var(--mymind-border)] bg-[color:var(--mymind-panel)] text-center font-serif text-lg text-[color:var(--mymind-text)]">
++                      <ReactMarkdown
++                        remarkPlugins={[remarkGfm]}
++                        components={{
++                          p: ({ children }) => <span>{children}</span>,
++                          a: ({ href, children }) => (
++                            <a
++                              href={href}
++                              target="_blank"
++                              rel="noopener noreferrer"
++                              className="text-[#45caff] hover:text-[#45caff]/80 underline"
++                            >
++                              {children}
++                            </a>
++                          ),
++                        }}
++                      >
++                        {quote.author}
++                      </ReactMarkdown>
++                    </div>
++                  )}
++                  
++                  {/* Date pill */}
++                  {quote.date && (
++                    <div className="text-center mb-8">
++                      <span className="inline-block px-3 py-[2px] rounded-full bg-[color:var(--mymind-border)] text-[12px] text-[color:var(--mymind-muted)]">
++                        {quote.date}
++                      </span>
++                    </div>
++                  )}
++                  
++                  {/* Quote scroll area */}
++                  <div className="overflow-y-auto max-h-[60vh] px-4 quote-scroll">
++                    <blockquote className={`relative font-serif ${getQuoteTextSizeClasses((quote.text || quote.shortText).length)} leading-relaxed text-gray-100`}>
++                      <div className="text-6xl text-[#45caff]/70 text-center mb-0" style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif'}}>‟</div>
++                      <ReactMarkdown
++                        remarkPlugins={[remarkGfm]}
++                        components={{
++                          p: ({ children }) => <p className="mb-0">{children}</p>,
++                          a: ({ href, children }) => (
++                            <a
++                              href={href}
++                              target="_blank"
++                              rel="noopener noreferrer"
++                              className="text-[#45caff] hover:text-[#45caff]/80 underline"
++                            >
++                              {children}
++                            </a>
++                          ),
++                        }}
++                      >
++                        {quote.text || quote.shortText}
++                      </ReactMarkdown>
++                      <div className="text-6xl text-[#45caff]/70 text-center mt-6" style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif', transform: 'scaleX(-1)'}}>‟</div>
++                    </blockquote>
++                  </div>
+                 </div>
+                 
+-                {/* Navigation Controls */}
+-                <div className="flex justify-between items-center w-full max-w-lg mt-12">
+-                  <motion.div
+-                    whileHover={{ scale: 1.1 }}
+-                    whileTap={{ scale: 0.95 }}
+-                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
+-                  >
+-                    <Button
+-                      onClick={onPrevious}
+-                      variant="ghost"
+-                      size="sm"
+-                      disabled={!hasPrevious}
+-                      className="text-gray-400 hover:text-gray-100 hover:bg-gray-800/50 disabled:opacity-30 disabled:cursor-not-allowed"
+-                      aria-label="Previous quote"
+-                    >
+-                      <ChevronLeft className="h-5 w-5" />
+-                    </Button>
+-                  </motion.div>
+-                  <div className="text-xs text-gray-500">
+-                    
+-                  </div>
+-                  <motion.div
+-                    whileHover={{ scale: 1.1 }}
+-                    whileTap={{ scale: 0.95 }}
+-                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
+-                  >
+-                    <Button
+-                      onClick={onNext}
+-                      variant="ghost"
+-                      size="sm"
+-                      disabled={!hasNext}
+-                      className="text-gray-400 hover:text-gray-100 hover:bg-gray-800/50 disabled:opacity-30 disabled:cursor-not-allowed"
+-                      aria-label="Next quote"
+-                    >
+-                      <ChevronRight className="h-5 w-5" />
+-                    </Button>
+-                  </motion.div>
+-                </div>
++                {/* Hidden Navigation Controls - keyboard only */}
++                <Button
++                  onClick={onPrevious}
++                  disabled={!hasPrevious}
++                  className="sr-only"
++                  aria-label="Previous quote"
++                >
++                  <ChevronLeft className="h-5 w-5" />
++                </Button>
++                <Button
++                  onClick={onNext}
++                  disabled={!hasNext}
++                  className="sr-only"
++                  aria-label="Next quote"
++                >
++                  <ChevronRight className="h-5 w-5" />
++                </Button>
+               </div>
+               
+               {/* Sidebar - Right Side */}
+-              <div className="bg-[#16161c] rounded-r-2xl border-l border-gray-700 p-6 flex flex-col overflow-y-auto">
++              <div className="bg-[#16161c] rounded-r-2xl border-l border-gray-700 p-6 flex flex-col h-full">
+                 {/* Close button */}
+                 <div className="flex justify-end mb-4">
+                   <Button
+@@ -220,35 +231,6 @@ export function QuoteDrawer({
+                 </div>
+                 
+-                {/* Title Block - Reserved h-20 */}
+-                <div className="h-20 mb-6">
+-                  {quote.author && (
+-                    <h1 className="font-serif text-[20px] md:text-[24px] text-gray-100 mb-2">
+-                      <ReactMarkdown
+-                        remarkPlugins={[remarkGfm]}
+-                        components={{
+-                          p: ({ children }) => <span>{children}</span>,
+-                          a: ({ href, children }) => (
+-                            <a
+-                              href={href}
+-                              target="_blank"
+-                              rel="noopener noreferrer"
+-                              className="text-[#45caff] hover:text-[#45caff]/80 underline"
+-                            >
+-                              {children}
+-                            </a>
+-                          ),
+-                        }}
+-                      >
+-                        {quote.author}
+-                      </ReactMarkdown>
+-                    </h1>
+-                  )}
+-                  
+-                  {quote.date && (
+-                    <div className="text-[13px] text-gray-500 mb-1">
+-                      {quote.date}
+-                    </div>
+-                  )}
+-                  
+-                </div>
+-                
+                 {/* Content Area - flexible space */}
+                 <div className="flex-1">
+                   {/* Link Preview */}
+@@ -268,21 +250,6 @@ export function QuoteDrawer({
+                   )}
+                 </div>
+-                
+-                {/* Action Buttons */}
+-                <div className="flex gap-2 pt-4 mt-auto">
+-                  <Button
+-                    onClick={handleCopy}
+-                    variant="outline"
+-                    size="sm"
+-                    className="flex-1 bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
+-                  >
+-                    <Copy className="h-4 w-4 mr-2" />
+-                    Copy
+-                  </Button>
+-                  <Button
+-                    onClick={handleShare}
+-                    variant="outline"
+-                    size="sm"
+-                    className="flex-1 bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
+-                  >
+-                    <Share2 className="h-4 w-4 mr-2" />
+-                    Share
+-                  </Button>
+-                </div>
+               </div>
+             </motion.div>
+           </>

@@ -16,7 +16,13 @@ const config: Config = {
       },
     },
     extend: {
+      fontFamily: {
+        lora: ['"Lora"', 'serif'],
+        nunito: ['"Nunito"', 'sans-serif'],
+      },
       colors: {
+        quoteText: '#a7b4c6',
+        metaMuted: '#8e9db4',
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

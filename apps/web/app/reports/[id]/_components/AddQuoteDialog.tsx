@@ -17,18 +17,68 @@ import { Switch } from '@/components/ui/switch';
 import { mutate } from 'swr';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import useSWR from 'swr';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Globe, Video, FileText, Hash, Plus, User, Building, HelpCircle } from 'lucide-react';
+import { EntityCombobox } from './EntityCombobox';
 
 interface AddQuoteDialogProps {
   reportId: string;
+  clientId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogProps) {
+interface Source {
+  id: string;
+  url: string;
+  title: string;
+  author?: string;
+  publishedAt?: string;
+  type: 'article' | 'video' | 'social' | 'other';
+}
+
+interface Entity {
+  id: string;
+  name: string;
+  type: 'person' | 'company' | 'industry' | 'other';
+  primaryUrl?: string;
+}
+
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+
+// Format date to MMM d, yyyy format
+const formatDateToDisplay = (dateString: string): string => {
+  if (!dateString) return '';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const month = months[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    
+    return `${month} ${day}, ${year}`;
+  } catch (error) {
+    return '';
+  }
+};
+
+export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQuoteDialogProps) {
   const [formData, setFormData] = useState({
     text: '',
-    author: '',
-    source: '',
+    entityId: '',
+    sourceId: '',
     sourceUrl: '',
     date: '',
     isPublic: false,
@@ -36,6 +86,22 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  
+  // Fetch available sources - try clientId path first, fallback to reportId path
+  const { data: sources } = useSWR<Source[]>(
+    clientId 
+      ? `/api/clients/${clientId}/reports/${reportId}/sources` 
+      : `/api/reports/${reportId}/sources`,
+    fetcher
+  );
+
+  // Fetch available entities - try clientId path first, fallback to reportId path
+  const { data: entities } = useSWR<Entity[]>(
+    clientId 
+      ? `/api/clients/${clientId}/reports/${reportId}/entities` 
+      : `/api/reports/${reportId}/entities`,
+    fetcher
+  );
 
   const extractFirstUrl = useCallback((text: string) => {
     // First try to find markdown links: [text](url)
@@ -82,23 +148,98 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
     }));
   };
 
-  const handleTextBlur = () => {
-    // No longer extract URLs from quote text
-    // Source URL only comes from author field
+
+  const handleSourceChange = (sourceId: string) => {
+    if (!sourceId || sourceId === 'no-sources') {
+      setFormData(prev => ({
+        ...prev,
+        sourceId: '',
+        sourceUrl: ''
+      }));
+      return;
+    }
+    
+    const selectedSource = sources?.find(s => s.id === sourceId);
+    if (selectedSource) {
+      const formattedDate = selectedSource.publishedAt ? formatDateToDisplay(selectedSource.publishedAt) : '';
+      
+      setFormData(prev => ({
+        ...prev,
+        sourceId: sourceId,
+        sourceUrl: selectedSource.url,
+        date: formattedDate || prev.date // Only update if we have a valid formatted date
+      }));
+    }
   };
 
-  const handleAuthorBlur = () => {
-    console.log('handleAuthorBlur called with author:', formData.author);
-    if (!formData.sourceUrl && formData.author) {
-      const extracted = extractFirstUrl(formData.author);
-      console.log('Extracted URL data from author:', extracted);
-      if (extracted) {
-        setFormData(prev => ({
-          ...prev,
-          sourceUrl: extracted.url,
-          source: prev.source || extracted.domain
-        }));
+  const handleEntityCreate = async (entityData: { name: string; type: string }) => {
+    try {
+      const endpoint = clientId 
+        ? `/api/clients/${clientId}/reports/${reportId}/entities`
+        : `/api/reports/${reportId}/entities`;
+        
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: entityData.name,
+          type: entityData.type,
+          confidence: 0.9 // Default confidence for manually created entities
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create entity');
       }
+
+      const newEntity = await response.json();
+      
+      // Update the entities list in SWR cache
+      const entityEndpoint = clientId 
+        ? `/api/clients/${clientId}/reports/${reportId}/entities`
+        : `/api/reports/${reportId}/entities`;
+      
+      mutate(
+        entityEndpoint,
+        (current: Entity[] | undefined) => current ? [...current, newEntity] : [newEntity],
+        false
+      );
+      
+      // Auto-select the newly created entity
+      setFormData(prev => ({ ...prev, entityId: newEntity.id }));
+      
+      // Revalidate to ensure fresh data
+      mutate(entityEndpoint);
+      
+    } catch (error) {
+      console.error('Error creating entity:', error);
+      setError('Failed to create new speaker. Please try again.');
+    }
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'video':
+        return <Video className="h-3 w-3" />;
+      case 'social':
+        return <Hash className="h-3 w-3" />;
+      case 'article':
+        return <FileText className="h-3 w-3" />;
+      default:
+        return <Globe className="h-3 w-3" />;
+    }
+  };
+
+  const getEntityIcon = (type: string) => {
+    switch (type) {
+      case 'person':
+        return <User className="h-3 w-3" />;
+      case 'company':
+        return <Building className="h-3 w-3" />;
+      case 'industry':
+        return <Building className="h-3 w-3" />;
+      default:
+        return <HelpCircle className="h-3 w-3" />;
     }
   };
 
@@ -111,17 +252,35 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
       return;
     }
     
+    if (!formData.entityId || formData.entityId === 'no-entities') {
+      setError('Please select a speaker');
+      return;
+    }
+    
+    if (!formData.sourceId || formData.sourceId === 'no-sources') {
+      setError('Please select a source');
+      return;
+    }
+    
+    if (!formData.sourceUrl) {
+      setError('Please provide a source URL');
+      return;
+    }
 
     setIsSubmitting(true);
     setError('');
 
     try {
-      const response = await fetch(`/api/reports/${reportId}/quotes`, {
+      const endpoint = clientId 
+        ? `/api/clients/${clientId}/reports/${reportId}/quotes`
+        : `/api/reports/${reportId}/quotes`;
+        
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          shortText: formData.text.slice(0, 300) // Auto-generate shortText from text
+          shortText: formData.text // Use full text as shortText
         }),
       });
 
@@ -141,8 +300,8 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
       // Reset form
       setFormData({
         text: '',
-        author: '',
-        source: '',
+        entityId: '',
+        sourceId: '',
         sourceUrl: '',
         date: '',
         isPublic: false,
@@ -173,7 +332,6 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
               <SimpleMarkdownTextarea
                 value={formData.text}
                 onChange={handleTextChange}
-                onBlur={handleTextBlur}
                 placeholder="Enter the full quote text... (e.g. [text](url))"
                 minHeight="min-h-[100px]"
                 required
@@ -205,58 +363,79 @@ export function AddQuoteDialog({ reportId, open, onOpenChange }: AddQuoteDialogP
             
             
             <div className="grid gap-2">
-              <Label htmlFor="author">Author</Label>
-              <SimpleMarkdownTextarea
-                value={formData.author}
-                onChange={(author) => setFormData(prev => ({ ...prev, author }))}
-                onBlur={handleAuthorBlur}
-                placeholder="Quote author... (e.g. [name](profile-url))"
-                minHeight="min-h-[60px]"
+              <Label htmlFor="entityId">Speaker *</Label>
+              <EntityCombobox
+                entities={entities || []}
+                selectedEntity={formData.entityId}
+                onEntityChange={(entityId) => setFormData(prev => ({ ...prev, entityId }))}
+                onEntityCreate={handleEntityCreate}
+                disabled={isSubmitting}
               />
-              {formData.author && (
-                <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200">
-                  <p className="text-xs font-medium text-gray-600 mb-2">Preview:</p>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      p: ({ children }) => <p className="font-medium text-lg">{children}</p>,
-                      a: ({ href, children }) => (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 underline"
-                        >
-                          {children}
-                        </a>
-                      ),
-                    }}
-                  >
-                    {formData.author}
-                  </ReactMarkdown>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="sourceId">Source *</Label>
+              <Select
+                value={formData.sourceId}
+                onValueChange={handleSourceChange}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a source" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sources && sources.length > 0 ? (
+                    sources.map((source) => (
+                      <SelectItem key={source.id} value={source.id}>
+                        <div className="flex items-center gap-2">
+                          {getTypeIcon(source.type)}
+                          <span className="truncate">{source.title}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-sources" disabled>
+                      No sources found for this report
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {formData.sourceId && formData.sourceId !== 'no-sources' && sources && (
+                <div className="text-xs text-gray-600 mt-1">
+                  {(() => {
+                    const selectedSource = sources.find(s => s.id === formData.sourceId);
+                    if (selectedSource) {
+                      return (
+                        <div>
+                          <span className="font-medium">Title:</span> {selectedSource.title}
+                          {selectedSource.author && (
+                            <span className="ml-3"><span className="font-medium">Author:</span> {selectedSource.author}</span>
+                          )}
+                          {selectedSource.publishedAt && (
+                            <span className="ml-3"><span className="font-medium">Date:</span> {formatDateToDisplay(selectedSource.publishedAt)}</span>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               )}
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="source">Source</Label>
-              <Input
-                id="source"
-                value={formData.source}
-                onChange={(e) => setFormData(prev => ({ ...prev, source: e.target.value }))}
-                placeholder="Source publication or context..."
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="sourceUrl">Source URL</Label>
+              <Label htmlFor="sourceUrl">Source URL *</Label>
               <Input
                 id="sourceUrl"
                 type="url"
                 value={formData.sourceUrl}
                 onChange={(e) => setFormData(prev => ({ ...prev, sourceUrl: e.target.value }))}
-                placeholder="https://..."
+                placeholder="https://example.com/timestamp#t=1m30s"
+                required
               />
+              <p className="text-xs text-gray-500">
+                Timestamped link to the exact moment (e.g., YouTube #t=1m30s)
+              </p>
             </div>
             
             <div className="grid gap-2">

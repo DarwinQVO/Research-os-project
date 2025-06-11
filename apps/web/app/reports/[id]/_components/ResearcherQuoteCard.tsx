@@ -5,8 +5,25 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Check, Clock, Eye } from 'lucide-react';
+import { Check, Clock, Eye, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { mutate } from 'swr';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { EditQuoteDialog } from './EditQuoteDialog';
 
 interface Quote {
   id: string;
@@ -20,17 +37,25 @@ interface Quote {
   isPublic?: boolean;
   isApproved?: boolean;
   status?: 'Published' | 'Approved' | 'Pending';
+  entityId?: string;
+  sourceId?: string;
+  speaker?: string;
+  sourceTitle?: string;
 }
 
 interface ResearcherQuoteCardProps {
   quote: Quote;
   onClick: () => void;
   reportId: string;
+  clientId?: string;
   onStatusChange?: (newStatus: 'Published' | 'Approved' | 'Pending') => void;
 }
 
-export function ResearcherQuoteCard({ quote, onClick, reportId, onStatusChange }: ResearcherQuoteCardProps) {
+export function ResearcherQuoteCard({ quote, onClick, reportId, clientId, onStatusChange }: ResearcherQuoteCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   const getFaviconUrl = (url?: string) => {
     if (!url) return null;
@@ -113,6 +138,37 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, onStatusChange }
     }
   };
 
+  const handleDeleteQuote = async () => {
+    setIsDeleting(true);
+    
+    try {
+      const response = await fetch(`/api/quotes/${quote.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete quote');
+      }
+
+      // Optimistically remove from cache
+      mutate(`/api/reports/${reportId}/quotes`, 
+        (currentData: any) => {
+          if (!currentData) return currentData;
+          return currentData.filter((q: any) => q.id !== quote.id);
+        }, 
+        false
+      );
+
+    } catch (error) {
+      console.error('Error deleting quote:', error);
+      // Revert optimistic update on error
+      mutate(`/api/reports/${reportId}/quotes`);
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
   return (
     <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-all duration-200 break-inside-avoid mb-4 group">
       {/* Status Controls - Quick Action Buttons */}
@@ -155,8 +211,43 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, onStatusChange }
           </Button>
         </div>
 
-        <div className="text-xs text-gray-500">
-          {new Date(quote.createdAt).toLocaleDateString()}
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-gray-500">
+            {new Date(quote.createdAt).toLocaleDateString()}
+          </div>
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <MoreHorizontal className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditDialogOpen(true);
+                }}
+              >
+                <Edit className="h-3 w-3 mr-2" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDeleteDialogOpen(true);
+                }}
+                className="text-red-600 focus:text-red-600"
+              >
+                <Trash2 className="h-3 w-3 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -237,6 +328,49 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, onStatusChange }
         </div>
 
       </div>
+
+      {/* Edit Quote Dialog */}
+      <EditQuoteDialog
+        reportId={reportId}
+        clientId={clientId}
+        quote={{
+          id: quote.id,
+          shortText: quote.shortText,
+          text: quote.text || quote.shortText,
+          entityId: quote.entityId,
+          sourceId: quote.sourceId,
+          sourceUrl: quote.sourceUrl,
+          date: quote.date,
+          isPublic: quote.isPublic || false,
+          isApproved: quote.isApproved || false,
+          speaker: quote.speaker || quote.author,
+          sourceTitle: quote.sourceTitle || quote.source,
+        }}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Quote</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this quote? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteQuote}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

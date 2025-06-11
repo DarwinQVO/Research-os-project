@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPublishedQuotes, createQuote } from '@research-os/db/quote';
+import { getPublishedQuotes, createLegacyQuote } from '@research-os/db/quote';
 import { getAllClients } from '@research-os/db/client';
 
 export async function GET() {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     
     if (createTestQuote) {
       // Create a test quote
-      const testQuote = await createQuote(reportId, {
+      const testQuote = await createLegacyQuote(reportId, {
         shortText: 'This is a test quote for debugging',
         text: 'This is a longer test quote text that meets the minimum requirements for testing the quote system.',
         author: 'Test Author',

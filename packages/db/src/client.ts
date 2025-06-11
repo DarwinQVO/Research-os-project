@@ -70,6 +70,22 @@ export async function updateClient(id: string, updates: Partial<Omit<ClientData,
   }
 }
 
+export async function getClient(id: string) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      'MATCH (c:Client {id: $id}) RETURN c {.*} LIMIT 1',
+      { id }
+    );
+    
+    return result.records[0]?.get(0) || null;
+  } finally {
+    await session.close();
+  }
+}
+
 export async function getClientWithReports(id: string) {
   const driver = getDriver();
   const session = driver.session();

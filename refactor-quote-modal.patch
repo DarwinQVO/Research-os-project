@@ -1,0 +1,661 @@
+diff --git a/packages/db/src/quote.ts b/packages/db/src/quote.ts
+index 1234567..8901234 100644
+--- a/packages/db/src/quote.ts
++++ b/packages/db/src/quote.ts
+@@ -1,17 +1,19 @@
+ import { getDriver } from './index';
+ 
+ interface QuoteInput {
+   shortText: string;
+   text: string;
+-  author?: string;
+-  source?: string;
++  entityId: string;
++  sourceId: string;
+   sourceUrl?: string;
+   date?: string;
+   isPublic: boolean;
+   isApproved?: boolean;
+ }
+ 
++// Legacy interface for backward compatibility
++interface LegacyQuoteInput extends Omit<QuoteInput, 'entityId' | 'sourceId'> {
++  author?: string;
++  source?: string;
++}
++
+ export async function createQuote(reportId: string, data: QuoteInput) {
+   const driver = getDriver();
+   const session = driver.session();
+@@ -22,18 +24,25 @@ export async function createQuote(reportId: string, data: QuoteInput) {
+   
+   try {
+     const result = await session.run(
+-      `MATCH (r:Report {id: $rid})
++      `MATCH (r:Report {id: $rid})
++       MATCH (e:Entity {id: $entityId})
++       MATCH (s:Source {id: $sourceId})
+        CREATE (q:Quote {
+-         id: randomUUID(), shortText: $shortText, text: $text,
+-         author: $author, source: $source, sourceUrl: $sourceUrl,
+-         date: $date, isPublic: $isPublic, isApproved: $isApproved,
++         id: randomUUID(), shortText: $shortText, text: $text,
++         sourceUrl: $sourceUrl, date: $date, isPublic: $isPublic, 
++         isApproved: $isApproved,
+          embedding: [0.0], createdAt: datetime()
+        })
+        MERGE (r)-[:HAS_QUOTE]->(q)
++       MERGE (q)-[:QUOTE_OF]->(e)
++       MERGE (q)-[:CITES]->(s)
+        RETURN q {.*}`,
+-      { rid: reportId, ...quoteData }
++      { 
++        rid: reportId,
++        entityId: data.entityId,
++        sourceId: data.sourceId,
++        ...quoteData 
++      }
+     );
+     
+     return result.records[0].get(0);
+@@ -42,6 +51,28 @@ export async function createQuote(reportId: string, data: QuoteInput) {
+   }
+ }
+ 
++// Legacy function for backward compatibility
++export async function createLegacyQuote(reportId: string, data: LegacyQuoteInput) {
++  const driver = getDriver();
++  const session = driver.session();
++  
++  const quoteData = {
++    ...data,
++    isApproved: data.isApproved || false
++  };
++  
++  try {
++    const result = await session.run(
++      `MATCH (r:Report {id: $rid})
++       CREATE (q:Quote {
++         id: randomUUID(), shortText: $shortText, text: $text,
++         author: $author, source: $source, sourceUrl: $sourceUrl,
++         date: $date, isPublic: $isPublic, isApproved: $isApproved,
++         embedding: [0.0], createdAt: datetime()
++       })
++       MERGE (r)-[:HAS_QUOTE]->(q)
++       RETURN q {.*}`,
++      { rid: reportId, ...quoteData }
++    );
++    
++    return result.records[0].get(0);
++  } finally {
++    await session.close();
++  }
++}
++
+ export async function getAllQuotesWithStatus(
+   clientId: string,
+   reportId: string
+@@ -64,11 +95,15 @@ export async function getAllQuotesWithStatus(
+   try {
+     // Get all quotes with computed status
+     const result = await session.run(
+       `MATCH (c:Client {id: $cid})<-[:BELONGS_TO]-(r:Report {id: $rid})
+        -[:HAS_QUOTE]->(q:Quote)
++       OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
++       OPTIONAL MATCH (q)-[:CITES]->(s:Source)
+        RETURN q { .id, .shortText, .author, .source, .sourceUrl, .date, .isPublic, .isApproved,
+          createdAt: toString(q.createdAt),
++         speaker: e.name,
++         sourceTitle: s.title,
+          status: CASE 
+            WHEN q.isPublic = true THEN 'Published'
+            WHEN q.isPublic = false AND q.isApproved = true THEN 'Approved' 
+            ELSE 'Pending'
+          END
+        } AS q
+        ORDER BY q.createdAt DESC`,
+       { cid: clientId, rid: reportId }
+     );
+     
+     return result.records.map(record => record.get('q'));
+   } finally {
+     await session.close();
+   }
+ }
+ 
+diff --git a/packages/db/src/entity.ts b/packages/db/src/entity.ts
+index 1234567..8901234 100644
+--- a/packages/db/src/entity.ts
++++ b/packages/db/src/entity.ts
+@@ -81,3 +81,19 @@ export async function findEntity(name: string, type: string) {
+     await session.close();
+   }
+ }
++
++export async function getReportEntities(reportId: string) {
++  const driver = getDriver();
++  const session = driver.session();
++  
++  try {
++    const result = await session.run(
++      'MATCH (r:Report {id: $reportId})-[:HAS_ENTITY]->(e:Entity) ' +
++      'RETURN e {.*} ORDER BY e.name',
++      { reportId }
++    );
++    
++    return result.records.map(record => record.get(0));
++  } finally {
++    await session.close();
++  }
++}
+diff --git a/apps/web/lib/zodSchemas.ts b/apps/web/lib/zodSchemas.ts
+index 1234567..8901234 100644
+--- a/apps/web/lib/zodSchemas.ts
++++ b/apps/web/lib/zodSchemas.ts
+@@ -32,6 +32,17 @@ export const entityChosenSchema = z.object({
+ export const quoteInsertSchema = z.object({
+   shortText: z.string().min(5).max(300),
+   text: z.string().min(10),
++  entityId: z.string().uuid(),
++  sourceId: z.string().uuid(),
++  sourceUrl: z.string().url(),
++  date: z.string().max(20).optional().transform(val => val || undefined),
++  isPublic: z.boolean().default(false),
++  isApproved: z.boolean().default(false),
++});
++
++// Legacy schema for backward compatibility
++export const legacyQuoteInsertSchema = z.object({
++  shortText: z.string().min(5).max(300),
++  text: z.string().min(10),
+   author: z.string().optional().transform(val => val || undefined),
+   source: z.string().optional().transform(val => val || undefined),
+   sourceUrl: z.string().optional().transform(val => {
+@@ -51,5 +62,6 @@ export const quoteInsertSchema = z.object({
+ 
+ export const quoteStatusSchema = quoteInsertSchema.extend({
+   status: z.enum(['Published', 'Approved', 'Pending'])
+ });
++
+diff --git a/apps/web/app/api/clients/[id]/reports/[rid]/entities/route.ts b/apps/web/app/api/clients/[id]/reports/[rid]/entities/route.ts
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/apps/web/app/api/clients/[id]/reports/[rid]/entities/route.ts
+@@ -0,0 +1,25 @@
++import { NextResponse } from 'next/server';
++import { getReportEntities } from '@research-os/db/entity';
++
++export async function GET(
++  request: Request,
++  { params }: { params: { id: string; rid: string } }
++) {
++  try {
++    const entities = await getReportEntities(params.rid);
++    
++    // Transform entities for dropdown usage
++    const transformedEntities = entities.map(entity => ({
++      id: entity.id,
++      name: entity.name,
++      type: entity.type,
++      primaryUrl: entity.primaryUrl
++    }));
++    
++    return NextResponse.json(transformedEntities);
++  } catch (error) {
++    console.error('Error fetching entities:', error);
++    return NextResponse.json(
++      { error: 'Failed to fetch entities' },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/apps/web/app/api/clients/[id]/reports/[rid]/quotes/route.ts b/apps/web/app/api/clients/[id]/reports/[rid]/quotes/route.ts
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/apps/web/app/api/clients/[id]/reports/[rid]/quotes/route.ts
+@@ -0,0 +1,56 @@
++import { NextResponse } from 'next/server';
++import { z } from 'zod';
++import { createQuote } from '@research-os/db/quote';
++import { quoteInsertSchema } from '@/lib/zodSchemas';
++import { getClient } from '@research-os/db/client';
++import { getReport } from '@research-os/db/report';
++
++export async function POST(
++  request: Request,
++  { params }: { params: { id: string; rid: string } }
++) {
++  try {
++    const body = await request.json();
++    const validation = quoteInsertSchema.safeParse(body);
++    
++    if (!validation.success) {
++      return NextResponse.json(
++        { error: 'Invalid input', details: validation.error.errors },
++        { status: 400 }
++      );
++    }
++    
++    // Verify client exists
++    const client = await getClient(params.id);
++    if (!client) {
++      return NextResponse.json(
++        { error: 'Client not found' },
++        { status: 404 }
++      );
++    }
++    
++    // Verify report exists and belongs to client  
++    const report = await getReport(params.rid);
++    if (!report || report.clientId !== params.id) {
++      return NextResponse.json(
++        { error: 'Report not found' },
++        { status: 404 }
++      );
++    }
++    
++    // Create quote with entity and source relationships
++    const quote = await createQuote(params.rid, validation.data);
++    
++    return NextResponse.json({ quote }, { status: 201 });
++  } catch (error) {
++    console.error('Error creating quote:', error);
++    
++    if (error instanceof Error && error.message.includes('Entity') && error.message.includes('not found')) {
++      return NextResponse.json(
++        { error: 'Entity not found. Please ensure the speaker exists in this report.' },
++        { status: 400 }
++      );
++    }
++    
++    if (error instanceof Error && error.message.includes('Source') && error.message.includes('not found')) {
++      return NextResponse.json(
++        { error: 'Source not found. Please ensure the source exists in this report.' },
++        { status: 400 }
++      );
++    }
++    
++    return NextResponse.json(
++      { error: 'Internal server error' },
++      { status: 500 }
++    );
++  }
++}
+diff --git a/apps/web/app/reports/[id]/_components/AddQuoteDialog.tsx b/apps/web/app/reports/[id]/_components/AddQuoteDialog.tsx
+index 1234567..8901234 100644
+--- a/apps/web/app/reports/[id]/_components/AddQuoteDialog.tsx
++++ b/apps/web/app/reports/[id]/_components/AddQuoteDialog.tsx
+@@ -27,6 +27,7 @@ import {
+ } from '@/components/ui/select';
+ import { Globe, Video, FileText, Hash, Plus } from 'lucide-react';
++import { User, Building, Industry, HelpCircle } from 'lucide-react';
+ 
+ interface AddQuoteDialogProps {
+   reportId: string;
+@@ -42,15 +43,27 @@ interface Source {
+   type: 'article' | 'video' | 'social' | 'other';
+ }
+ 
++interface Entity {
++  id: string;
++  name: string;
++  type: 'person' | 'company' | 'industry' | 'other';
++  primaryUrl?: string;
++}
++
+ const fetcher = (url: string) => fetch(url).then(res => res.json());
+ 
+ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQuoteDialogProps) {
+   const [formData, setFormData] = useState({
+     text: '',
+-    author: '',
+-    source: '',
+-    sourceUrl: '',
++    entityId: '',
+     sourceId: '',
++    sourceUrl: '',
+     date: '',
+     isPublic: false,
+     isApproved: false,
+@@ -64,6 +77,12 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+     fetcher
+   );
+ 
++  // Fetch available entities if clientId is provided
++  const { data: entities } = useSWR<Entity[]>(
++    clientId ? `/api/clients/${clientId}/reports/${reportId}/entities` : null,
++    fetcher
++  );
++
+   const extractFirstUrl = useCallback((text: string) => {
+     // First try to find markdown links: [text](url)
+     // This regex handles URLs with encoded parentheses
+@@ -110,32 +129,23 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+   };
+ 
+-  const handleTextBlur = () => {
+-    // No longer extract URLs from quote text
+-    // Source URL only comes from author field
+-  };
+-
+-  const handleAuthorBlur = () => {
+-    console.log('handleAuthorBlur called with author:', formData.author);
+-    if (!formData.sourceUrl && formData.author) {
+-      const extracted = extractFirstUrl(formData.author);
+-      console.log('Extracted URL data from author:', extracted);
+-      if (extracted) {
+-        setFormData(prev => ({
+-          ...prev,
+-          sourceUrl: extracted.url,
+-          source: prev.source || extracted.domain
+-        }));
+-      }
+-    }
+-  };
+-
+   const handleSourceChange = (sourceId: string) => {
++    if (!sourceId) {
++      setFormData(prev => ({
++        ...prev,
++        sourceId: '',
++        sourceUrl: ''
++      }));
++      return;
++    }
++    
+     const selectedSource = sources?.find(s => s.id === sourceId);
+     if (selectedSource) {
+       setFormData(prev => ({
+         ...prev,
+         sourceId: sourceId,
+-        sourceUrl: selectedSource.url,
+-        source: selectedSource.title,
+-        author: selectedSource.author || prev.author
++        sourceUrl: selectedSource.url
+       }));
+     }
+   };
+@@ -155,6 +165,19 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+     }
+   };
+ 
++  const getEntityIcon = (type: string) => {
++    switch (type) {
++      case 'person':
++        return <User className="h-3 w-3" />;
++      case 'company':
++        return <Building className="h-3 w-3" />;
++      case 'industry':
++        return <Industry className="h-3 w-3" />;
++      default:
++        return <HelpCircle className="h-3 w-3" />;
++    }
++  };
++
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+     
+@@ -163,6 +186,16 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+       return;
+     }
+     
++    if (!formData.entityId) {
++      setError('Please select a speaker');
++      return;
++    }
++    
++    if (!formData.sourceId) {
++      setError('Please select a source');
++      return;
++    }
++    
++    if (!formData.sourceUrl) {
++      setError('Please provide a source URL');
++      return;
++    }
+ 
+     setIsSubmitting(true);
+     setError('');
+@@ -170,7 +203,7 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+     try {
+-      const response = await fetch(`/api/reports/${reportId}/quotes`, {
++      const response = await fetch(`/api/clients/${clientId}/reports/${reportId}/quotes`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+@@ -186,20 +219,6 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+       const { quote } = await response.json();
+       
+       // Optimistic update
+-      mutate(`/api/reports/${reportId}/quotes`, (current: any) => {
+-        if (!current) return [quote];
+-        return [quote, ...current];
+-      }, false);
+-      
+-      // If a source was selected, link the quote to it
+-      if (formData.sourceId && quote.id) {
+-        try {
+-          await fetch(`/api/quotes/${quote.id}/link-source`, {
+-            method: 'POST',
+-            headers: { 'Content-Type': 'application/json' },
+-            body: JSON.stringify({ sourceId: formData.sourceId }),
+-          });
+-        } catch (linkError) {
+-          console.error('Failed to link quote to source:', linkError);
+-        }
+-      }
++      mutate(`/api/reports/${reportId}/quotes`, (current: any) => {
++        if (!current) return [quote];
++        return [quote, ...current];
++      }, false);
+       
+       // Reset form
+       setFormData({
+         text: '',
+-        author: '',
+-        source: '',
+-        sourceUrl: '',
++        entityId: '',
+         sourceId: '',
++        sourceUrl: '',
+         date: '',
+         isPublic: false,
+         isApproved: false,
+@@ -271,42 +284,56 @@ export function AddQuoteDialog({ reportId, clientId, open, onOpenChange }: AddQ
+             </div>
+             
+             
+             <div className="grid gap-2">
+-              <Label htmlFor="author">Author</Label>
+-              <SimpleMarkdownTextarea
+-                value={formData.author}
+-                onChange={(author) => setFormData(prev => ({ ...prev, author }))}
+-                onBlur={handleAuthorBlur}
+-                placeholder="Quote author... (e.g. [name](profile-url))"
+-                minHeight="min-h-[60px]"
+-              />
+-              {formData.author && (
+-                <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200">
+-                  <p className="text-xs font-medium text-gray-600 mb-2">Preview:</p>
+-                  <ReactMarkdown
+-                    remarkPlugins={[remarkGfm]}
+-                    components={{
+-                      p: ({ children }) => <p className="font-medium text-lg">{children}</p>,
+-                      a: ({ href, children }) => (
+-                        <a
+-                          href={href}
+-                          target="_blank"
+-                          rel="noopener noreferrer"
+-                          className="text-blue-600 hover:text-blue-800 underline"
+-                        >
+-                          {children}
+-                        </a>
+-                      ),
+-                    }}
+-                  >
+-                    {formData.author}
+-                  </ReactMarkdown>
+-                </div>
+-              )}
++              <Label htmlFor="entityId">Speaker *</Label>
++              <Select
++                value={formData.entityId}
++                onValueChange={(value) => setFormData(prev => ({ ...prev, entityId: value }))}
++                required
++              >
++                <SelectTrigger>
++                  <SelectValue placeholder="Select a speaker" />
++                </SelectTrigger>
++                <SelectContent>
++                  {entities && entities.length > 0 ? (
++                    entities.map((entity) => (
++                      <SelectItem key={entity.id} value={entity.id}>
++                        <div className="flex items-center gap-2">
++                          {getEntityIcon(entity.type)}
++                          <span>{entity.name}</span>
++                          <span className="text-xs text-gray-500 capitalize">({entity.type})</span>
++                        </div>
++                      </SelectItem>
++                    ))
++                  ) : (
++                    <SelectItem value="" disabled>
++                      No entities found for this report
++                    </SelectItem>
++                  )}
++                </SelectContent>
++              </Select>
+             </div>
+             
+-            {/* Source Selector - only show if sources are available */}
+-            {sources && sources.length > 0 && (
+-              <div className="grid gap-2">
+-                <Label htmlFor="sourceSelector">Select Source</Label>
+-                <Select
+-                  value={formData.sourceId}
+-                  onValueChange={handleSourceChange}
+-                >
+-                  <SelectTrigger>
+-                    <SelectValue placeholder="Choose a source or enter manually" />
+-                  </SelectTrigger>
+-                  <SelectContent>
+-                    <SelectItem value="">None (Enter manually)</SelectItem>
+-                    {sources.map((source) => (
+-                      <SelectItem key={source.id} value={source.id}>
+-                        <div className="flex items-center gap-2">
+-                          {getTypeIcon(source.type)}
+-                          <span className="truncate">{source.title}</span>
+-                        </div>
+-                      </SelectItem>
+-                    ))}
+-                  </SelectContent>
+-                </Select>
+-              </div>
+-            )}
++            <div className="grid gap-2">
++              <Label htmlFor="sourceId">Source *</Label>
++              <Select
++                value={formData.sourceId}
++                onValueChange={handleSourceChange}
++                required
++              >
++                <SelectTrigger>
++                  <SelectValue placeholder="Select a source" />
++                </SelectTrigger>
++                <SelectContent>
++                  {sources && sources.length > 0 ? (
++                    sources.map((source) => (
++                      <SelectItem key={source.id} value={source.id}>
++                        <div className="flex items-center gap-2">
++                          {getTypeIcon(source.type)}
++                          <span className="truncate">{source.title}</span>
++                        </div>
++                      </SelectItem>
++                    ))
++                  ) : (
++                    <SelectItem value="" disabled>
++                      No sources found for this report
++                    </SelectItem>
++                  )}
++                </SelectContent>
++              </Select>
++              {formData.sourceId && sources && (
++                <div className="text-xs text-gray-600 mt-1">
++                  {(() => {
++                    const selectedSource = sources.find(s => s.id === formData.sourceId);
++                    if (selectedSource) {
++                      return (
++                        <div>
++                          <span className="font-medium">Title:</span> {selectedSource.title}
++                          {selectedSource.author && (
++                            <span className="ml-3"><span className="font-medium">Author:</span> {selectedSource.author}</span>
++                          )}
++                        </div>
++                      );
++                    }
++                    return null;
++                  })()}
++                </div>
++              )}
++            </div>
+             
+-            <div className="grid gap-2">
+-              <Label htmlFor="source">Source</Label>
+-              <Input
+-                id="source"
+-                value={formData.source}
+-                onChange={(e) => setFormData(prev => ({ ...prev, source: e.target.value }))}
+-                placeholder="Source publication or context..."
+-              />
+-            </div>
+-            
+             <div className="grid gap-2">
+-              <Label htmlFor="sourceUrl">Source URL</Label>
++              <Label htmlFor="sourceUrl">Source URL *</Label>
+               <Input
+                 id="sourceUrl"
+                 type="url"
+                 value={formData.sourceUrl}
+                 onChange={(e) => setFormData(prev => ({ ...prev, sourceUrl: e.target.value }))}
+-                placeholder="https://..."
++                placeholder="https://example.com/timestamp#t=1m30s"
++                required
+               />
++              <p className="text-xs text-gray-500">
++                Timestamped link to the exact moment (e.g., YouTube #t=1m30s)
++              </p>
+             </div>
+             
+             <div className="grid gap-2">
+diff --git a/apps/web/app/api/reports/[rid]/quotes/route.ts b/apps/web/app/api/reports/[rid]/quotes/route.ts
+index 1234567..8901234 100644
+--- a/apps/web/app/api/reports/[rid]/quotes/route.ts
++++ b/apps/web/app/api/reports/[rid]/quotes/route.ts
+@@ -1,6 +1,6 @@
+ import { NextResponse } from 'next/server';
+ import { z } from 'zod';
+-import { createQuote, getAllQuotesWithStatus } from '@research-os/db/quote';
+-import { quoteInsertSchema } from '@/lib/zodSchemas';
++import { createLegacyQuote, getAllQuotesWithStatus } from '@research-os/db/quote';
++import { legacyQuoteInsertSchema } from '@/lib/zodSchemas';
+ 
+ export async function POST(
+@@ -9,7 +9,7 @@ export async function POST(
+ ) {
+   try {
+     const body = await request.json();
+-    const validation = quoteInsertSchema.safeParse(body);
++    const validation = legacyQuoteInsertSchema.safeParse(body);
+     
+     if (!validation.success) {
+       return NextResponse.json(
+@@ -19,7 +19,7 @@ export async function POST(
+     }
+     
+     // Create quote
+-    const quote = await createQuote(params.rid, validation.data);
++    const quote = await createLegacyQuote(params.rid, validation.data);
+     
+     return NextResponse.json({ quote }, { status: 201 });
+   } catch (error) {

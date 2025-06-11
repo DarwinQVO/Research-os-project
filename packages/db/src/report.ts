@@ -16,6 +16,22 @@ export async function deleteReport(id: string) {
   }
 }
 
+export async function getReport(id: string) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      'MATCH (r:Report {id: $id})-[:BELONGS_TO]->(c:Client) RETURN r {.*, clientId: c.id} LIMIT 1',
+      { id }
+    );
+    
+    return result.records[0]?.get(0) || null;
+  } finally {
+    await session.close();
+  }
+}
+
 export async function createReport(clientId: string, title: string) {
   const driver = getDriver();
   const session = driver.session();

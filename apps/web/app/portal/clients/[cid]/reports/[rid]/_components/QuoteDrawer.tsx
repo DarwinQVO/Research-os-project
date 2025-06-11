@@ -10,11 +10,10 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Copy, Share2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LinkPreview } from './LinkPreview';
-import { LinkPreviewMini } from './LinkPreviewMini';
 
 interface QuoteDrawerProps {
   open: boolean;
@@ -27,6 +26,9 @@ interface QuoteDrawerProps {
     source?: string;
     sourceUrl?: string;
     date?: string;
+    // New fields from entity/source relationships
+    speaker?: string;
+    sourceTitle?: string;
     createdAt: string;
     status?: 'Published' | 'Approved' | 'Pending';
   } | null;
@@ -45,51 +47,6 @@ export function QuoteDrawer({
   hasPrevious,
   hasNext,
 }: QuoteDrawerProps) {
-  const getQuoteTextSizeClasses = (textLength: number) => {
-    if (textLength <= 100) {
-      return 'text-3xl md:text-4xl lg:text-5xl xl:text-6xl';
-    } else if (textLength <= 200) {
-      return 'text-2xl md:text-3xl lg:text-4xl xl:text-5xl';
-    } else if (textLength <= 400) {
-      return 'text-xl md:text-2xl lg:text-3xl xl:text-4xl';
-    } else if (textLength <= 600) {
-      return 'text-lg md:text-xl lg:text-2xl xl:text-3xl';
-    } else {
-      return 'text-base md:text-lg lg:text-xl xl:text-2xl';
-    }
-  };
-
-  const handleCopy = async () => {
-    if (!quote) return;
-    
-    const text = `"${quote.shortText}"${quote.author ? ` - ${quote.author}` : ''}${quote.source ? ` (${quote.source})` : ''}`;
-    
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
-
-  const handleShare = async () => {
-    if (!quote) return;
-    
-    const text = `"${quote.shortText}"${quote.author ? ` - ${quote.author}` : ''}`;
-    
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Quote',
-          text: text,
-        });
-      } catch (err) {
-        console.error('Error sharing: ', err);
-      }
-    } else {
-      handleCopy();
-    }
-  };
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!open) return;
@@ -127,22 +84,48 @@ export function QuoteDrawer({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
               onClick={() => onOpenChange(false)}
-            />
+            >
+              {/* Hover close areas - outside the card */}
+              <div 
+                className="absolute inset-y-0 left-0 w-16 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+                onClick={() => onOpenChange(false)}
+              >
+                <span className="text-xs text-[color:var(--mymind-muted)] font-medium">close</span>
+              </div>
+              <div 
+                className="absolute inset-y-0 right-0 w-16 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+                onClick={() => onOpenChange(false)}
+              >
+                <span className="text-xs text-[color:var(--mymind-muted)] font-medium">close</span>
+              </div>
+              <div 
+                className="absolute inset-x-0 top-0 h-16 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+                onClick={() => onOpenChange(false)}
+              >
+                <span className="text-xs text-[color:var(--mymind-muted)] font-medium">close</span>
+              </div>
+              <div 
+                className="absolute inset-x-0 bottom-0 h-16 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+                onClick={() => onOpenChange(false)}
+              >
+                <span className="text-xs text-[color:var(--mymind-muted)] font-medium">close</span>
+              </div>
+            </motion.div>
             
             {/* Animated drawer panel */}
             <motion.div
               key="panel"
-              className="fixed inset-6 md:inset-12 lg:inset-24 2xl:inset-32 grid grid-cols-[2fr_1fr] z-50"
+              className="fixed inset-6 md:inset-12 lg:inset-24 2xl:inset-32 bg-[#1e1e25] rounded-2xl overflow-hidden z-50"
               initial={{ opacity: 0, y: 50, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 50, scale: 0.96 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
             >
-              {/* Quote Content - Left Side */}
-              <div className="bg-[#1e1e25] rounded-l-2xl flex flex-col justify-center items-center p-8 md:p-16 overflow-auto">
-                <div className="max-w-3xl mx-auto text-center">
-                  <blockquote className={`relative font-serif ${getQuoteTextSizeClasses((quote.text || quote.shortText).length)} leading-relaxed text-gray-100`}>
-                    <div className="text-6xl text-[#45caff]/70 font-serif text-center mb-0">"</div>
+              <div className="h-full grid grid-cols-[3fr_2fr]">
+                {/* ─────────── Quote zone ─────────── */}
+                <div className="flex items-center justify-center">
+                  <blockquote className="quote-scroll w-full max-w-[750px] lg:max-w-[880px] xl:max-w-[1000px] px-6 md:px-8 overflow-y-auto max-h-[80vh] font-lora font-normal text-[24px] leading-[36px] text-quoteText text-center relative">
+                    <div className="text-6xl text-quoteText text-center -mb-2" style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif'}}>‟</div>
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -161,134 +144,72 @@ export function QuoteDrawer({
                     >
                       {quote.text || quote.shortText}
                     </ReactMarkdown>
-                    <div className="text-6xl text-[#45caff]/70 font-serif text-center mt-6">"</div>
+                    <div className="text-6xl text-quoteText text-center mt-6" style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif', transform: 'scaleX(-1)'}}>‟</div>
                   </blockquote>
-                </div>
-                
-                {/* Navigation Controls */}
-                <div className="flex justify-between items-center w-full max-w-lg mt-12">
-                  <motion.div
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                  
+                  {/* Hidden Navigation Controls - keyboard only */}
+                  <Button
+                    onClick={onPrevious}
+                    disabled={!hasPrevious}
+                    className="sr-only"
+                    aria-label="Previous quote"
                   >
-                    <Button
-                      onClick={onPrevious}
-                      variant="ghost"
-                      size="sm"
-                      disabled={!hasPrevious}
-                      className="text-gray-400 hover:text-gray-100 hover:bg-gray-800/50 disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label="Previous quote"
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </Button>
-                  </motion.div>
-                  <div className="text-xs text-gray-500">
-                    Use ← → keys to navigate
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    onClick={onNext}
+                    disabled={!hasNext}
+                    className="sr-only"
+                    aria-label="Next quote"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                </div>
+
+                {/* ─────────── Metadata panel ─────────── */}
+                <aside className="w-full border-l border-[color:var(--mymind-border)] bg-[#16161c] flex flex-col overflow-y-auto">
+                  {/* Speaker header with gradient background - moved to top */}
+                  {(quote.speaker || quote.author) && (
+                    <div className="m-6 mb-0 relative w-full overflow-hidden rounded-lg bg-gradient-to-b from-[#2a2a35] via-[#1e1e25] to-[#16161c] p-4">
+                      <div className="font-lora font-light text-[29px] leading-[29px] text-[color:var(--mymind-text)] text-left">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: (props) => (
+                              <a {...props} className="underline hover:text-[#45caff]" target="_blank" rel="noopener noreferrer" />
+                            ),
+                            p: ({children}) => <span>{children}</span>,
+                          }}
+                        >
+                          {quote.speaker || quote.author}
+                        </ReactMarkdown>
+                      </div>
+
+                      {/* Date */}
+                      {quote.date && (
+                        <div className="mt-3 font-lora font-normal text-[16px] leading-[18px] text-[#8e9db4]">
+                          {quote.date}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Source embed section - dedicated area */}
+                  <div className="flex-1 p-6 space-y-6">
+                    {/* Link Preview - for all sources with URL */}
+                    {quote.sourceUrl && (
+                      <LinkPreview sourceUrl={quote.sourceUrl} />
+                    )}
+                    
+                    {/* Source Info (if no URL but has source) */}
+                    {quote.source && !quote.sourceUrl && (
+                      <div className="bg-gray-800/40 backdrop-blur rounded-xl p-4 space-y-3">
+                        <h4 className="text-sm font-medium text-gray-300">Source</h4>
+                        <p className="text-sm text-gray-100">{quote.source}</p>
+                      </div>
+                    )}
                   </div>
-                  <motion.div
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                  >
-                    <Button
-                      onClick={onNext}
-                      variant="ghost"
-                      size="sm"
-                      disabled={!hasNext}
-                      className="text-gray-400 hover:text-gray-100 hover:bg-gray-800/50 disabled:opacity-30 disabled:cursor-not-allowed"
-                      aria-label="Next quote"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </Button>
-                  </motion.div>
-                </div>
-              </div>
-              
-              {/* Sidebar - Right Side */}
-              <div className="bg-[#16161c] rounded-r-2xl border-l border-gray-700 p-6 flex flex-col overflow-y-auto">
-                {/* Close button */}
-                <div className="flex justify-end mb-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onOpenChange(false)}
-                    className="text-gray-400 hover:text-gray-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                {/* Title Block - Reserved h-20 */}
-                <div className="h-20 mb-6">
-                  {quote.author && (
-                    <h1 className="font-serif text-[20px] md:text-[24px] text-gray-100 mb-2">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          p: ({ children }) => <span>{children}</span>,
-                          a: ({ href, children }) => (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#45caff] hover:text-[#45caff]/80 underline"
-                            >
-                              {children}
-                            </a>
-                          ),
-                        }}
-                      >
-                        {quote.author}
-                      </ReactMarkdown>
-                    </h1>
-                  )}
-                  
-                  {quote.date && (
-                    <div className="text-[13px] text-gray-500 mb-1">
-                      {quote.date}
-                    </div>
-                  )}
-                  
-                </div>
-                
-                {/* Content Area - flexible space */}
-                <div className="flex-1">
-                  {/* Link Preview */}
-                  {quote.sourceUrl && (
-                    <LinkPreview sourceUrl={quote.sourceUrl} />
-                  )}
-                  
-                  {/* Source Info (if no URL but has source) */}
-                  {quote.source && !quote.sourceUrl && (
-                    <div className="bg-gray-800/40 backdrop-blur rounded-xl p-4 space-y-3 mb-4">
-                      <h4 className="text-sm font-medium text-gray-300">Source</h4>
-                      <p className="text-sm text-gray-100">{quote.source}</p>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Action Buttons */}
-                <div className="flex gap-2 pt-4 mt-auto">
-                  <Button
-                    onClick={handleCopy}
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </Button>
-                  <Button
-                    onClick={handleShare}
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700"
-                  >
-                    <Share2 className="h-4 w-4 mr-2" />
-                    Share
-                  </Button>
-                </div>
+                </aside>
               </div>
             </motion.div>
           </>

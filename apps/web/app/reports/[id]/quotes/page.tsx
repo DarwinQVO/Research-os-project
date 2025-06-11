@@ -195,6 +195,7 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
                       quote={quote}
                       onClick={() => handleQuoteClick(index, publishedQuotes)}
                       reportId={params.id}
+                      clientId={report?.clientId}
                       onStatusChange={(newStatus) => setActiveTab(newStatus)}
                     />
                   ))}
@@ -227,6 +228,7 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
                       quote={quote}
                       onClick={() => handleQuoteClick(index, approvedQuotes)}
                       reportId={params.id}
+                      clientId={report?.clientId}
                       onStatusChange={(newStatus) => setActiveTab(newStatus)}
                     />
                   ))}
@@ -259,6 +261,7 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
                       quote={quote}
                       onClick={() => handleQuoteClick(index, pendingQuotes)}
                       reportId={params.id}
+                      clientId={report?.clientId}
                       onStatusChange={(newStatus) => setActiveTab(newStatus)}
                     />
                   ))}
@@ -301,6 +304,7 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
       {/* Add Quote Dialog */}
       <AddQuoteDialog
         reportId={params.id}
+        clientId={report?.clientId}
         open={isAddQuoteOpen}
         onOpenChange={setIsAddQuoteOpen}
       />

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDriver } from '@research-os/db';
-import { createQuote, getPublishedQuotes } from '@research-os/db/quote';
+import { createLegacyQuote, getPublishedQuotes } from '@research-os/db/quote';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
         isPublic: true
       };
       
-      const createdQuote = await createQuote(reportId, testQuote);
+      const createdQuote = await createLegacyQuote(reportId, testQuote);
       
       return NextResponse.json({
         message: 'Test quote created',

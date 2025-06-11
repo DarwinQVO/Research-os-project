@@ -30,7 +30,19 @@ export const entityChosenSchema = z.object({
 });
 
 export const quoteInsertSchema = z.object({
-  shortText: z.string().min(5).max(300),
+  shortText: z.string().min(5),  // Removed max(300) limit
+  text: z.string().min(10),
+  entityId: z.string().min(1),  // Changed from uuid() to just string
+  sourceId: z.string().min(1),  // Changed from uuid() to just string
+  sourceUrl: z.string().url(),
+  date: z.string().max(20).optional().transform(val => val || undefined),
+  isPublic: z.boolean().default(false),
+  isApproved: z.boolean().default(false),
+});
+
+// Legacy schema for backward compatibility
+export const legacyQuoteInsertSchema = z.object({
+  shortText: z.string().min(5),  // Removed max(300) limit
   text: z.string().min(10),
   author: z.string().optional().transform(val => val || undefined),
   source: z.string().optional().transform(val => val || undefined),

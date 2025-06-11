@@ -8,6 +8,8 @@ import Link from 'next/link';
 import useSWR from 'swr';
 import { ConfirmEntityDialog } from './_components/ConfirmEntityDialog';
 import { AddQuoteDialog } from './_components/AddQuoteDialog';
+import { SourcesSection } from './_components/SourcesSection';
+import { EntitiesSection } from './_components/EntitiesSection';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -150,10 +152,23 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
         </Button>
       </div>
 
-      <div className="prose max-w-none">
-        <div className="bg-gray-50 p-6 rounded-lg">
-          <h2 className="text-xl font-semibold mb-4">Report Content</h2>
-          <p>{reportData.content}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 prose max-w-none">
+          <div className="bg-gray-50 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4">Report Content</h2>
+            <p>{reportData.content}</p>
+          </div>
+        </div>
+        
+        <div className="lg:col-span-1 space-y-6">
+          <SourcesSection 
+            reportId={params.id} 
+            clientId={reportData.clientId}
+          />
+          <EntitiesSection 
+            reportId={params.id} 
+            clientId={reportData.clientId}
+          />
         </div>
       </div>
 
@@ -166,6 +181,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
 
       <AddQuoteDialog
         reportId={params.id}
+        clientId={reportData.clientId}
         open={isAddQuoteOpen}
         onOpenChange={setIsAddQuoteOpen}
       />

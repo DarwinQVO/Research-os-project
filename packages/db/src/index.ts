@@ -67,3 +67,8 @@ export function resetDriver(): void {
 }
 
 export { neo4j };
+export * from './source';
+export * from './quote';
+export * from './entity';
+export * from './client';
+export * from './report';

@@ -25,9 +25,14 @@
     "./quote": {
       "import": "./src/quote.ts",
       "types": "./src/quote.ts"
+    },
+    "./source": {
+      "import": "./src/source.ts",
+      "types": "./src/source.ts"
     }
   },
   "scripts": {
+    "dev": "echo \"DB package ready\"",
     "lint": "eslint src",
     "type-check": "tsc --noEmit",
     "test": "echo \"No tests yet\""

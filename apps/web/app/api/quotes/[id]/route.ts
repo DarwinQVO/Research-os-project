@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateQuote } from '@research-os/db/quote';
+import { updateQuote, deleteQuote } from '@research-os/db/quote';
 
 export async function PATCH(
   request: Request,
@@ -7,10 +7,28 @@ export async function PATCH(
 ) {
   try {
     const body = await request.json();
-    const { isPublic, isApproved } = body;
+    const { 
+      isPublic, 
+      isApproved, 
+      shortText, 
+      text, 
+      sourceUrl, 
+      date, 
+      entityId, 
+      sourceId 
+    } = body;
     
     // Update the quote in the database
-    const updatedQuote = await updateQuote(params.id, { isPublic, isApproved });
+    const updatedQuote = await updateQuote(params.id, { 
+      isPublic, 
+      isApproved, 
+      shortText, 
+      text, 
+      sourceUrl, 
+      date, 
+      entityId, 
+      sourceId 
+    });
     
     if (!updatedQuote) {
       return NextResponse.json(
@@ -21,14 +39,35 @@ export async function PATCH(
     
     return NextResponse.json({ 
       success: true,
-      message: 'Quote status updated successfully',
+      message: 'Quote updated successfully',
       quote: updatedQuote
     });
     
   } catch (error) {
-    console.error('Error updating quote status:', error);
+    console.error('Error updating quote:', error);
     return NextResponse.json(
-      { error: 'Failed to update quote status' },
+      { error: 'Failed to update quote' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await deleteQuote(params.id);
+    
+    return NextResponse.json({ 
+      success: true,
+      message: 'Quote deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error deleting quote:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete quote' },
       { status: 500 }
     );
   }

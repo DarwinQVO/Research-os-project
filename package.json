@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "turbo dev --filter=apps/web",
+    "dev": "turbo dev",
     "build": "turbo build",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest",

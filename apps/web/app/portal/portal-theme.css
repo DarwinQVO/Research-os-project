@@ -1,0 +1,26 @@
+/* Portal theme overrides */
+:root {
+  --mymind-border: rgba(255, 255, 255, 0.1);
+  --mymind-panel: rgba(255, 255, 255, 0.05);
+  --mymind-text: rgba(255, 255, 255, 0.9);
+  --mymind-muted: rgba(255, 255, 255, 0.6);
+}
+
+/* smoother scrollbar only inside quote area */
+.quote-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.quote-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.quote-scroll::-webkit-scrollbar-thumb {
+  background: var(--mymind-border);
+  border-radius: 3px;
+}
+
+/* Wider max-width on extra large screens */
+@media (min-width: 1440px) {
+  .quote-scroll {
+    max-width: 1000px;
+  }
+}
