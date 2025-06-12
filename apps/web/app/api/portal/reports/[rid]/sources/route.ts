@@ -5,8 +5,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ rid: string }> }
 ) {
+  let rid: string | undefined;
+  
   try {
-    const { rid } = await params;
+    const resolvedParams = await params;
+    rid = resolvedParams.rid;
     console.log('Portal sources API called with reportId:', rid);
     
     if (!rid) {
@@ -24,14 +27,15 @@ export async function GET(
       }
     });
   } catch (error) {
-    console.error('Error fetching published sources for report', rid, ':', error);
+    console.error('Error fetching published sources for report', rid || 'unknown', ':', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('Error details:', {
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name
+      message: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : 'Unknown'
     });
     return NextResponse.json(
-      { error: 'Failed to fetch sources', details: error?.message }, 
+      { error: 'Failed to fetch sources', details: errorMessage }, 
       { status: 500 }
     );
   }
