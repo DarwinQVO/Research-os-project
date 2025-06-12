@@ -58,3 +58,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Source Library styling tokens (4-px rule) */
+:root {
+  --space-1: 4px;
+  --space-2: 8px; 
+  --space-3: 12px;
+  --radius-2xl: 12px;
+  --sidebar-gap-x: 32px;
+  --pane-gap-y: 24px;
+  --animation-duration: 150ms;
+}
+
+@media (min-width: 1800px) {
+  .quote-grid-container {
+    max-width: 1800px;
+  }
+}

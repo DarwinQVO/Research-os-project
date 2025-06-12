@@ -160,3 +160,89 @@ export async function deleteSource(id: string) {
     await session.close();
   }
 }
+
+export interface SourceMeta {
+  id: string;
+  url: string;
+  title: string;
+  author?: string;
+  publishedAt?: string;
+  type: 'article' | 'video' | 'social' | 'other';
+  description?: string;
+  thumbnail?: string;
+  isPublic?: boolean;
+  createdAt: string;
+  quoteCount?: number;
+}
+
+export async function getPublishedSources(reportId: string): Promise<SourceMeta[]> {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    const result = await session.run(
+      `MATCH (cl:Client)<-[:BELONGS_TO]-(r:Report {id: $reportId})-[:HAS_SOURCE]->(s:Source {isPublic: true})
+       OPTIONAL MATCH (s)<-[:FROM_SOURCE]-(q:Quote)
+       RETURN s { 
+         .*, 
+         createdAt: toString(s.createdAt),
+         quoteCount: count(q)
+       } AS source
+       ORDER BY source.createdAt DESC`,
+      { reportId }
+    );
+    
+    return result.records.map(record => record.get('source'));
+  } finally {
+    await session.close();
+  }
+}
+
+export interface SourceContent {
+  quotes: any[];
+  images: any[];
+  entities: any[];
+}
+
+export async function getSourceContent(sourceId: string): Promise<SourceContent> {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    // Get quotes from this source
+    const quotesResult = await session.run(
+      `MATCH (s:Source {id: $sourceId})<-[:FROM_SOURCE]-(q:Quote {isPublic: true})
+       OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
+       RETURN q { 
+         .*, 
+         createdAt: toString(q.createdAt),
+         speaker: e.name,
+         sourceTitle: null
+       } AS quote
+       ORDER BY q.createdAt DESC`,
+      { sourceId }
+    );
+    
+    // Get entities mentioned in quotes from this source
+    const entitiesResult = await session.run(
+      `MATCH (s:Source {id: $sourceId})<-[:FROM_SOURCE]-(q:Quote)-[:QUOTE_OF]->(e:Entity)
+       RETURN DISTINCT e { .*, createdAt: toString(e.createdAt) } AS entity
+       ORDER BY e.name`,
+      { sourceId }
+    );
+    
+    const quotes = quotesResult.records.map(record => record.get('quote'));
+    const entities = entitiesResult.records.map(record => record.get('entity'));
+    
+    // Images would come from source metadata or attached media
+    const images: any[] = [];
+    
+    return {
+      quotes,
+      images,
+      entities
+    };
+  } finally {
+    await session.close();
+  }
+}
