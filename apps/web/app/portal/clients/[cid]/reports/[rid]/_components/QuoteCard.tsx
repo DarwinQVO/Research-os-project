@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LinkPreviewMini } from './LinkPreviewMini';
+import { cn } from '@/lib/utils';
 
 interface QuoteCardProps {
   quote: {
@@ -20,15 +21,30 @@ interface QuoteCardProps {
 }
 
 export function QuoteCard({ quote, onClick }: QuoteCardProps) {
+  const previewText = quote.shortText;
+  const len = previewText.length;
+  
+  // Map text length to size tiers with max-height
+  let cls: string;
+  if (len < 120) {
+    cls = 'text-[18px] leading-[27px] max-h-[220px]';
+  } else if (len < 240) {
+    cls = 'text-[16px] leading-[24px] max-h-[300px]';
+  } else if (len < 360) {
+    cls = 'text-[14px] leading-[21px] max-h-[360px]';
+  } else {
+    cls = 'text-[12px] leading-[18px] max-h-[420px] long';
+  }
+  
   return (
     <div
       onClick={onClick}
-      className="relative group bg-[#1e1e25] rounded-xl p-6 shadow-lg cursor-pointer transition-all duration-200 hover:shadow-xl hover:border hover:border-[#45caff99] break-inside-avoid mb-6 w-[270px] flex flex-col"
+      className="group relative w-[270px] mx-auto bg-[#16161c] rounded-2xl px-6 py-8 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:bg-[#1a1a21] hover:ring-1 hover:ring-[#45caff33] break-inside-avoid mb-6"
     >
       {/* Curly quotes decoration */}
       <div className="relative flex-1 flex flex-col">
         <div 
-          className="text-[32px] text-quoteText leading-none pointer-events-none text-center -mb-3"
+          className="text-[32px] text-quoteText leading-none pointer-events-none text-center -mb-1"
           style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif'}}
           aria-hidden="true"
         >
@@ -36,11 +52,14 @@ export function QuoteCard({ quote, onClick }: QuoteCardProps) {
         </div>
         
         <div className="flex-1 flex flex-col">
-          <div className="font-lora font-normal text-[16px] leading-[24px] text-quoteText line-clamp-[10] text-center px-4">
+          <p className={cn(
+            "relative font-lora font-light text-quoteText text-center overflow-hidden transition-[font-size] duration-200",
+            cls
+          )}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                p: ({ children }) => <p className="mb-0">{children}</p>,
+                p: ({ children }) => <span>{children}</span>,
                 a: ({ href, children }) => (
                   <a
                     href={href}
@@ -54,16 +73,24 @@ export function QuoteCard({ quote, onClick }: QuoteCardProps) {
                 ),
               }}
             >
-              {quote.shortText}
+              {previewText}
             </ReactMarkdown>
-          </div>
-          <div 
-            className="text-[32px] text-quoteText leading-none pointer-events-none text-center mt-1"
-            style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif', transform: 'scaleX(-1)'}}
-            aria-hidden="true"
-          >
-            ‟
-          </div>
+            {cls.includes('long') && (
+              <>
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#16161c] via-[#16161c]/70 to-transparent" />
+                <span className="hidden" id="omit-bottom-quote" />
+              </>
+            )}
+          </p>
+          {!cls.includes('long') && (
+            <div 
+              className="text-[32px] text-quoteText leading-none pointer-events-none text-center mt-2"
+              style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif', transform: 'scaleX(-1)'}}
+              aria-hidden="true"
+            >
+              ‟
+            </div>
+          )}
         </div>
       </div>
       

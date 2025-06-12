@@ -181,12 +181,13 @@ export async function getPublishedSources(reportId: string): Promise<SourceMeta[
   
   try {
     const result = await session.run(
-      `MATCH (cl:Client)<-[:BELONGS_TO]-(r:Report {id: $reportId})-[:HAS_SOURCE]->(s:Source {isPublic: true})
+      `MATCH (cl:Client)<-[:BELONGS_TO]-(r:Report {id: $reportId})-[:HAS_SOURCE]->(s:Source)
        OPTIONAL MATCH (s)<-[:FROM_SOURCE]-(q:Quote)
        RETURN s { 
          .*, 
          createdAt: toString(s.createdAt),
-         quoteCount: count(q)
+         quoteCount: count(q),
+         isPublic: COALESCE(s.isPublic, true)
        } AS source
        ORDER BY source.createdAt DESC`,
       { reportId }
@@ -211,7 +212,8 @@ export async function getSourceContent(sourceId: string): Promise<SourceContent>
   try {
     // Get quotes from this source
     const quotesResult = await session.run(
-      `MATCH (s:Source {id: $sourceId})<-[:FROM_SOURCE]-(q:Quote {isPublic: true})
+      `MATCH (s:Source {id: $sourceId})<-[:FROM_SOURCE]-(q:Quote)
+       WHERE COALESCE(q.isPublic, true) = true
        OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
        RETURN q { 
          .*, 
