@@ -181,8 +181,8 @@ export async function getPublishedSources(reportId: string): Promise<SourceMeta[
   
   try {
     const result = await session.run(
-      `MATCH (cl:Client)<-[:BELONGS_TO]-(r:Report {id: $reportId})-[:HAS_SOURCE]->(s:Source)
-       OPTIONAL MATCH (s)<-[:FROM_SOURCE]-(q:Quote)
+      `MATCH (r:Report {id: $reportId})-[:HAS_SOURCE]->(s:Source)
+       OPTIONAL MATCH (s)<-[:CITES]-(q:Quote)
        RETURN s { 
          .*, 
          createdAt: toString(s.createdAt),
@@ -212,7 +212,7 @@ export async function getSourceContent(sourceId: string): Promise<SourceContent>
   try {
     // Get quotes from this source
     const quotesResult = await session.run(
-      `MATCH (s:Source {id: $sourceId})<-[:FROM_SOURCE]-(q:Quote)
+      `MATCH (s:Source {id: $sourceId})<-[:CITES]-(q:Quote)
        WHERE COALESCE(q.isPublic, true) = true
        OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
        RETURN q { 
@@ -227,7 +227,7 @@ export async function getSourceContent(sourceId: string): Promise<SourceContent>
     
     // Get entities mentioned in quotes from this source
     const entitiesResult = await session.run(
-      `MATCH (s:Source {id: $sourceId})<-[:FROM_SOURCE]-(q:Quote)-[:QUOTE_OF]->(e:Entity)
+      `MATCH (s:Source {id: $sourceId})<-[:CITES]-(q:Quote)-[:QUOTE_OF]->(e:Entity)
        RETURN DISTINCT e { .*, createdAt: toString(e.createdAt) } AS entity
        ORDER BY e.name`,
       { sourceId }

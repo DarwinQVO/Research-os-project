@@ -138,9 +138,14 @@ export default function PortalPage({ params }: PortalPageProps) {
     return (
       <div className="min-h-screen bg-[#0a0a0f] text-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Quote Library</h1>
+          <h1 className="text-2xl font-bold mb-2">
+            {activeTab === 'quotes' ? 'Quote Library' : 'Source Library'}
+          </h1>
           <p className="text-gray-400">
-            {(error as any)?.status === 404 ? 'Client or Report not found' : 'Failed to load quotes'}
+            {(error as any)?.status === 404 
+              ? 'Client or Report not found' 
+              : `Failed to load ${activeTab}`
+            }
           </p>
         </div>
       </div>
@@ -152,7 +157,7 @@ export default function PortalPage({ params }: PortalPageProps) {
       {/* Navigation Header */}
       <header className="flex justify-start items-center gap-10 px-6 h-[56px] border-b border-[#26262e] sticky top-0 z-40">
         <h1 className="font-lora font-light text-[28px] text-[#d4d4e1]">
-          Quote Library
+          {activeTab === 'quotes' ? 'Quote Library' : 'Source Library'}
         </h1>
         
         <QuotesSourcesTabs 
