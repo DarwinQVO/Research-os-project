@@ -170,7 +170,7 @@ export function QuoteDrawer({
                 <aside className="w-full border-l border-[color:var(--mymind-border)] bg-[#16161c] flex flex-col overflow-y-auto">
                   {/* Speaker header with gradient background - moved to top */}
                   {(quote.speaker || quote.author) && (
-                    <div className="m-6 mb-0 relative w-full overflow-hidden rounded-lg bg-gradient-to-b from-[#2a2a35] via-[#1e1e25] to-[#16161c] p-4">
+                    <div className="m-4 mb-0 relative w-full overflow-hidden rounded-lg bg-gradient-to-b from-[#2a2a35] via-[#1e1e25] to-[#16161c] p-4">
                       <div className="font-lora font-light text-[29px] leading-[29px] text-[color:var(--mymind-text)] text-left">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
@@ -195,7 +195,7 @@ export function QuoteDrawer({
                   )}
 
                   {/* Source embed section - dedicated area */}
-                  <div className="flex-1 p-6 space-y-6">
+                  <div className="flex-1 p-4 space-y-6">
                     {/* Link Preview - for all sources with URL */}
                     {quote.sourceUrl && (
                       <LinkPreview sourceUrl={quote.sourceUrl} />

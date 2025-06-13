@@ -29,6 +29,18 @@ export const entityChosenSchema = z.object({
   })
 });
 
+export const entityStatusSchema = z.object({
+  status: z.enum(['pending', 'approved', 'published'])
+});
+
+export const entityEditSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100, 'Name too long'),
+  type: z.enum(['person', 'company', 'industry', 'other']),
+  description: z.string().max(160, 'Description must be 160 characters or less').optional(),
+  primaryUrl: z.string().url('Invalid URL').optional().or(z.literal('')),
+  avatarUrl: z.string().url('Invalid avatar URL').optional().or(z.literal(''))
+});
+
 export const quoteInsertSchema = z.object({
   shortText: z.string().min(5),  // Removed max(300) limit
   text: z.string().min(10),
@@ -63,4 +75,8 @@ export const legacyQuoteInsertSchema = z.object({
 
 export const quoteStatusSchema = quoteInsertSchema.extend({
   status: z.enum(['Published', 'Approved', 'Pending'])
+});
+
+export const sourceUpdateSchema = z.object({
+  status: z.enum(['pending', 'approved', 'published'])
 });

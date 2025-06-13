@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import ReactPlayer from 'react-player';
+import dynamic from 'next/dynamic';
 import { ExternalLink } from 'lucide-react';
+
+// Import ReactPlayer dynamically to avoid SSR issues
+const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
 
 interface LinkPreviewProps {
   sourceUrl: string;
@@ -28,13 +31,13 @@ export function LinkPreview({ sourceUrl, className = '' }: LinkPreviewProps) {
       return;
     }
 
-    // Check if it's a video platform URL
-    const isVideoUrl = ReactPlayer.canPlay(sourceUrl);
+    // Check if it's a video platform URL (manual detection)
     const domain = new URL(sourceUrl).hostname.toLowerCase();
     const isVideoProvider = domain.includes('youtube') || 
                            domain.includes('youtu.be') || 
                            domain.includes('twitter') || 
                            domain.includes('x.com');
+    const isVideoUrl = isVideoProvider;
 
     if (isVideoUrl && isVideoProvider) {
       // For video URLs, we don't need to fetch preview data
@@ -93,11 +96,11 @@ export function LinkPreview({ sourceUrl, className = '' }: LinkPreviewProps) {
   }
 
   const domain = new URL(sourceUrl).hostname;
-  const isVideoUrl = ReactPlayer.canPlay(sourceUrl);
   const isVideoProvider = domain.includes('youtube') || 
                          domain.includes('youtu.be') || 
                          domain.includes('twitter') || 
                          domain.includes('x.com');
+  const isVideoUrl = isVideoProvider;
   
   // Normalize domain display
   const displayDomain = domain.replace('youtu.be', 'youtube.com').replace('www.', '');

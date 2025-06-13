@@ -1,22 +1,41 @@
 import { NextResponse } from 'next/server';
-import { getReportEntities, createEntity, linkReportToEntity } from '@research-os/db/entity';
+import { getReportEntities, getPublishedEntities, createEntity, linkReportToEntity } from '@research-os/db/entity';
+import type { EntityStatus } from '@research-os/db/entity';
 
 export async function GET(
   request: Request,
   { params }: { params: { rid: string } }
 ) {
   try {
-    const entities = await getReportEntities(params.rid);
+    const { searchParams } = new URL(request.url);
+    const isPublic = searchParams.get('public') === '1';
+    const status = searchParams.get('status') as EntityStatus | null;
     
-    // Transform entities for dropdown usage
-    const transformedEntities = entities.map(entity => ({
-      id: entity.id,
-      name: entity.name,
-      type: entity.type,
-      primaryUrl: entity.primaryUrl
-    }));
+    // Validate status parameter if provided
+    if (status && !['pending', 'approved', 'published'].includes(status)) {
+      return NextResponse.json(
+        { error: 'Invalid status parameter' },
+        { status: 400 }
+      );
+    }
+
+    let entities;
+    if (isPublic) {
+      entities = await getPublishedEntities(params.rid);
+    } else {
+      entities = await getReportEntities(params.rid, status || undefined);
+      // Transform entities for dropdown usage (backward compatibility)
+      const transformedEntities = entities.map(entity => ({
+        id: entity.id,
+        name: entity.name,
+        type: entity.type,
+        primaryUrl: entity.primaryUrl,
+        status: entity.status || 'pending'
+      }));
+      return NextResponse.json(transformedEntities);
+    }
     
-    return NextResponse.json(transformedEntities);
+    return NextResponse.json(entities);
   } catch (error) {
     console.error('Error fetching entities:', error);
     return NextResponse.json(
@@ -32,7 +51,7 @@ export async function POST(
 ) {
   try {
     const body = await request.json();
-    const { name, type, primaryUrl, confidence } = body;
+    const { name, type, primaryUrl, confidence, avatarUrl, description } = body;
     
     if (!name || !type) {
       return NextResponse.json(
@@ -41,19 +60,17 @@ export async function POST(
       );
     }
     
-    // For reports without clientId, we need to create entity differently
     const entityData = {
-      id: `entity_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       name,
       type,
       primaryUrl: primaryUrl || null,
-      confidence: confidence || 0.9
+      confidence: confidence || 0.9,
+      status: 'pending' as const,
+      avatarUrl: avatarUrl || null,
+      description: description || null
     };
     
-    const createdEntity = await createEntity(entityData);
-    
-    // Link the entity to the report
-    await linkReportToEntity(params.rid, createdEntity.id);
+    const createdEntity = await createEntity(params.rid, entityData);
     
     return NextResponse.json(createdEntity, { status: 201 });
   } catch (error) {

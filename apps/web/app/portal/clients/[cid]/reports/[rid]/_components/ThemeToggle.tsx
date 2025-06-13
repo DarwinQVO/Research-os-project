@@ -43,9 +43,9 @@ export function ThemeToggle() {
       variant="ghost"
       size="sm"
       onClick={toggleTheme}
-      className="text-gray-400 hover:text-gray-100"
+      className="h-6 w-6 p-0 text-[#8e9db4] hover:text-[#45caff] transition-colors"
     >
-      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      {isDark ? <Sun className="h-6 w-6" /> : <Moon className="h-6 w-6" />}
     </Button>
   );
 }

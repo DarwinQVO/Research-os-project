@@ -1,5 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteQuote, getQuoteById } from '@research-os/db';
+import { deleteQuote, getQuoteById, updateQuote } from '@research-os/db';
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string; rid: string; qid: string }> }
+) {
+  try {
+    const { id: clientId, rid: reportId, qid: quoteId } = await params;
+    const body = await request.json();
+    
+    // Verify the quote exists and belongs to the correct client/report chain
+    const quote = await getQuoteById(quoteId);
+    if (!quote) {
+      return NextResponse.json(
+        { error: 'Quote not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Update only the status fields (isPublic, isApproved)
+    const updateData: { isPublic?: boolean; isApproved?: boolean } = {};
+    
+    if (typeof body.isPublic === 'boolean') {
+      updateData.isPublic = body.isPublic;
+    }
+    
+    if (typeof body.isApproved === 'boolean') {
+      updateData.isApproved = body.isApproved;
+    }
+    
+    const updatedQuote = await updateQuote(quoteId, updateData);
+    
+    return NextResponse.json({ quote: updatedQuote });
+  } catch (error) {
+    console.error('Error updating quote status:', error);
+    return NextResponse.json(
+      { error: 'Failed to update quote status' },
+      { status: 500 }
+    );
+  }
+}
 
 export async function DELETE(
   request: NextRequest,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { updateSource, deleteSource } from '@research-os/db/source';
+import { updateSource, deleteSource, getSource } from '@research-os/db/source';
+import { sourceUpdateSchema } from '@/lib/zodSchemas';
 
 export async function PATCH(
   request: Request,
@@ -7,6 +8,43 @@ export async function PATCH(
 ) {
   try {
     const body = await request.json();
+    
+    // Check if this is a status-only update
+    if (body.status && Object.keys(body).length === 1) {
+      // Validate status update
+      const validation = sourceUpdateSchema.safeParse(body);
+      if (!validation.success) {
+        return NextResponse.json(
+          { error: 'Invalid input', details: validation.error.errors },
+          { status: 400 }
+        );
+      }
+
+      // Check if source exists
+      const existingSource = await getSource(params.id);
+      if (!existingSource) {
+        return NextResponse.json(
+          { error: 'Source not found' },
+          { status: 404 }
+        );
+      }
+
+      // Update source status
+      const updatedSource = await updateSource(params.id, {
+        status: validation.data.status
+      });
+
+      if (!updatedSource) {
+        return NextResponse.json(
+          { error: 'Failed to update source' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(updatedSource);
+    }
+    
+    // Handle full source update
     const { 
       url, 
       title, 
@@ -14,7 +52,8 @@ export async function PATCH(
       publishedAt, 
       type, 
       description, 
-      thumbnail 
+      thumbnail,
+      status
     } = body;
     
     // Update the source in the database
@@ -25,7 +64,8 @@ export async function PATCH(
       publishedAt, 
       type, 
       description, 
-      thumbnail 
+      thumbnail,
+      status
     });
     
     if (!updatedSource) {

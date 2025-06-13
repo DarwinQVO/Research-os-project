@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,39 +43,28 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
   const [activeTab, setActiveTab] = useState('Published');
 
   const { data: report } = useSWR(`/api/reports/${params.id}`, fetcher);
-  const { data: quotes, error, isLoading } = useSWR(
-    report ? `/api/reports/${params.id}/quotes?clientId=${report.clientId}` : null,
-    fetcher
-  );
+  
+  // Use separate SWR keys for each status
+  const publishedKey = report ? `/api/clients/${report.clientId}/reports/${params.id}/quotes?status=published` : null;
+  const approvedKey = report ? `/api/clients/${report.clientId}/reports/${params.id}/quotes?status=approved` : null;
+  const pendingKey = report ? `/api/clients/${report.clientId}/reports/${params.id}/quotes?status=pending` : null;
+  
+  const { data: publishedQuotes = [], error: publishedError, isLoading: publishedLoading } = useSWR(publishedKey, fetcher);
+  const { data: approvedQuotes = [], error: approvedError, isLoading: approvedLoading } = useSWR(approvedKey, fetcher);
+  const { data: pendingQuotes = [], error: pendingError, isLoading: pendingLoading } = useSWR(pendingKey, fetcher);
+  
+  const isLoading = publishedLoading || approvedLoading || pendingLoading;
+  const error = publishedError || approvedError || pendingError;
+  
+  // Combine all quotes for the drawer navigation
+  const allQuotes = useMemo(() => {
+    return [...publishedQuotes, ...approvedQuotes, ...pendingQuotes];
+  }, [publishedQuotes, approvedQuotes, pendingQuotes]);
 
-  // Compute quote status and filter by status
-  const quotesWithStatus = useMemo(() => {
-    if (!quotes) return [];
-    return quotes.map((quote: Quote) => ({
-      ...quote,
-      status: quote.isPublic ? 'Published' : 
-              (quote.isApproved ? 'Approved' : 'Pending') as 'Published' | 'Approved' | 'Pending'
-    }));
-  }, [quotes]);
-
-  const quoteCounts = useMemo(() => {
-    const counts = {
-      Published: 0,
-      Approved: 0,
-      Pending: 0,
-    };
-    
-    quotesWithStatus.forEach((quote: Quote) => {
-      if (quote.status) {
-        counts[quote.status]++;
-      }
-    });
-    
-    return counts;
-  }, [quotesWithStatus]);
-
-  const filterQuotesByStatus = (status: 'Published' | 'Approved' | 'Pending') => {
-    return quotesWithStatus.filter((quote: Quote) => quote.status === status);
+  const quoteCounts = {
+    Published: publishedQuotes.length,
+    Approved: approvedQuotes.length,
+    Pending: pendingQuotes.length,
   };
 
   const breakpointColumns = {
@@ -84,11 +73,16 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
     480: 1,
   };
 
-  const handleQuoteClick = (index: number, filteredQuotes?: Quote[]) => {
-    // Find the actual index in the full quotes array
-    const actualIndex = filteredQuotes ? 
-      quotesWithStatus.findIndex((q: Quote) => q.id === filteredQuotes[index].id) : 
-      index;
+  const handleQuoteClick = (index: number, status: 'Published' | 'Approved' | 'Pending') => {
+    // Find the actual index in all quotes array
+    let actualIndex = 0;
+    if (status === 'Published') {
+      actualIndex = index;
+    } else if (status === 'Approved') {
+      actualIndex = publishedQuotes.length + index;
+    } else {
+      actualIndex = publishedQuotes.length + approvedQuotes.length + index;
+    }
     setSelectedQuoteIndex(actualIndex);
     setIsDrawerOpen(true);
   };
@@ -100,12 +94,75 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
   };
 
   const handleNext = () => {
-    if (selectedQuoteIndex !== null && quotesWithStatus && selectedQuoteIndex < quotesWithStatus.length - 1) {
+    if (selectedQuoteIndex !== null && selectedQuoteIndex < allQuotes.length - 1) {
       setSelectedQuoteIndex(selectedQuoteIndex + 1);
     }
   };
 
-  const selectedQuote = selectedQuoteIndex !== null && quotesWithStatus ? quotesWithStatus[selectedQuoteIndex] : null;
+  const selectedQuote = selectedQuoteIndex !== null ? allQuotes[selectedQuoteIndex] : null;
+
+  // Function to handle status change with optimistic updates
+  const handleStatusChange = async (
+    quoteId: string, 
+    currentStatus: 'Published' | 'Approved' | 'Pending',
+    newStatus: 'Published' | 'Approved' | 'Pending'
+  ) => {
+    if (!report) return;
+    
+    // Determine which lists to update
+    const currentKey = currentStatus === 'Published' ? publishedKey : 
+                      currentStatus === 'Approved' ? approvedKey : pendingKey;
+    const targetKey = newStatus === 'Published' ? publishedKey : 
+                     newStatus === 'Approved' ? approvedKey : pendingKey;
+    
+    // Find the quote in current list
+    const currentList = currentStatus === 'Published' ? publishedQuotes : 
+                       currentStatus === 'Approved' ? approvedQuotes : pendingQuotes;
+    const quote = currentList.find((q: Quote) => q.id === quoteId);
+    
+    if (!quote || !currentKey || !targetKey) return;
+    
+    // Optimistic update: remove from current list
+    mutate(currentKey, currentList.filter((q: Quote) => q.id !== quoteId), false);
+    
+    // Optimistic update: add to target list
+    const targetList = newStatus === 'Published' ? publishedQuotes : 
+                      newStatus === 'Approved' ? approvedQuotes : pendingQuotes;
+    const updatedQuote = {
+      ...quote,
+      status: newStatus,
+      isPublic: newStatus === 'Published',
+      isApproved: newStatus === 'Approved' || newStatus === 'Published'
+    };
+    mutate(targetKey, [updatedQuote, ...targetList], false);
+    
+    try {
+      // Make the API call
+      const response = await fetch(`/api/clients/${report.clientId}/reports/${params.id}/quotes/${quoteId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isPublic: newStatus === 'Published',
+          isApproved: newStatus === 'Approved' || newStatus === 'Published'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update quote status');
+      }
+      
+      // Revalidate all lists after successful update
+      mutate(publishedKey);
+      mutate(approvedKey);
+      mutate(pendingKey);
+      
+    } catch (error) {
+      console.error('Error updating quote status:', error);
+      // Revert optimistic updates on error
+      mutate(currentKey);
+      mutate(targetKey);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -147,17 +204,24 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
           </div>
         </div>
         
-        <Button 
-          onClick={() => setIsAddQuoteOpen(true)}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Add Quote
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href={`/reports/${params.id}/sources`}>
+            <Button variant="outline" size="sm" className="flex items-center gap-2">
+              📄 Moderate Sources
+            </Button>
+          </Link>
+          <Button 
+            onClick={() => setIsAddQuoteOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Quote
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
-      {quotesWithStatus && quotesWithStatus.length > 0 ? (
+      {allQuotes.length > 0 ? (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="Published" className="flex items-center gap-2">
@@ -181,102 +245,93 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
           </TabsList>
           
           <TabsContent value="Published" className="mt-6">
-            {(() => {
-              const publishedQuotes = filterQuotesByStatus('Published');
-              return publishedQuotes.length > 0 ? (
-                <Masonry
-                  breakpointCols={breakpointColumns}
-                  className="flex -ml-[14px] w-auto"
-                  columnClassName="pl-[14px] bg-clip-padding"
-                >
-                  {publishedQuotes.map((quote: Quote, index: number) => (
-                    <ResearcherQuoteCard
-                      key={quote.id}
-                      quote={quote}
-                      onClick={() => handleQuoteClick(index, publishedQuotes)}
-                      reportId={params.id}
-                      clientId={report?.clientId}
-                      onStatusChange={(newStatus) => setActiveTab(newStatus)}
-                    />
-                  ))}
-                </Masonry>
-              ) : (
-                <div className="flex items-center justify-center py-20">
-                  <div className="text-center">
-                    <p className="text-gray-400 text-lg">No published quotes found</p>
-                    <p className="text-gray-500 text-sm mt-2">
-                      No quotes have been published to the client yet.
-                    </p>
-                  </div>
+            {publishedQuotes.length > 0 ? (
+              <Masonry
+                breakpointCols={breakpointColumns}
+                className="flex -ml-[14px] w-auto"
+                columnClassName="pl-[14px] bg-clip-padding"
+              >
+                {publishedQuotes.map((quote: Quote, index: number) => (
+                  <ResearcherQuoteCard
+                    key={quote.id}
+                    quote={{ ...quote, status: 'Published' }}
+                    onClick={() => handleQuoteClick(index, 'Published')}
+                    reportId={params.id}
+                    clientId={report?.clientId}
+                    onStatusChange={(newStatus) => handleStatusChange(quote.id, 'Published', newStatus)}
+                  />
+                ))}
+              </Masonry>
+            ) : (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <p className="text-gray-400 text-lg">No published quotes found</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    No quotes have been published to the client yet.
+                  </p>
                 </div>
-              );
-            })()}
+              </div>
+            )}
           </TabsContent>
           
           <TabsContent value="Approved" className="mt-6">
-            {(() => {
-              const approvedQuotes = filterQuotesByStatus('Approved');
-              return approvedQuotes.length > 0 ? (
-                <Masonry
-                  breakpointCols={breakpointColumns}
-                  className="flex -ml-[14px] w-auto"
-                  columnClassName="pl-[14px] bg-clip-padding"
-                >
-                  {approvedQuotes.map((quote: Quote, index: number) => (
-                    <ResearcherQuoteCard
-                      key={quote.id}
-                      quote={quote}
-                      onClick={() => handleQuoteClick(index, approvedQuotes)}
-                      reportId={params.id}
-                      clientId={report?.clientId}
-                      onStatusChange={(newStatus) => setActiveTab(newStatus)}
-                    />
-                  ))}
-                </Masonry>
-              ) : (
-                <div className="flex items-center justify-center py-20">
-                  <div className="text-center">
-                    <p className="text-gray-400 text-lg">No approved quotes found</p>
-                    <p className="text-gray-500 text-sm mt-2">
-                      No quotes have been approved for publication yet.
-                    </p>
-                  </div>
+            {approvedQuotes.length > 0 ? (
+              <Masonry
+                breakpointCols={breakpointColumns}
+                className="flex -ml-[14px] w-auto"
+                columnClassName="pl-[14px] bg-clip-padding"
+              >
+                {approvedQuotes.map((quote: Quote, index: number) => (
+                  <ResearcherQuoteCard
+                    key={quote.id}
+                    quote={{ ...quote, status: 'Approved' }}
+                    onClick={() => handleQuoteClick(index, 'Approved')}
+                    reportId={params.id}
+                    clientId={report?.clientId}
+                    onStatusChange={(newStatus) => handleStatusChange(quote.id, 'Approved', newStatus)}
+                  />
+                ))}
+              </Masonry>
+            ) : (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <p className="text-gray-400 text-lg">No approved quotes found</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    No quotes have been approved for publication yet.
+                  </p>
                 </div>
-              );
-            })()}
+              </div>
+            )}
           </TabsContent>
           
           <TabsContent value="Pending" className="mt-6">
-            {(() => {
-              const pendingQuotes = filterQuotesByStatus('Pending');
-              return pendingQuotes.length > 0 ? (
-                <Masonry
-                  breakpointCols={breakpointColumns}
-                  className="flex -ml-[14px] w-auto"
-                  columnClassName="pl-[14px] bg-clip-padding"
-                >
-                  {pendingQuotes.map((quote: Quote, index: number) => (
-                    <ResearcherQuoteCard
-                      key={quote.id}
-                      quote={quote}
-                      onClick={() => handleQuoteClick(index, pendingQuotes)}
-                      reportId={params.id}
-                      clientId={report?.clientId}
-                      onStatusChange={(newStatus) => setActiveTab(newStatus)}
-                    />
-                  ))}
-                </Masonry>
-              ) : (
-                <div className="flex items-center justify-center py-20">
-                  <div className="text-center">
-                    <p className="text-gray-400 text-lg">No pending quotes found</p>
-                    <p className="text-gray-500 text-sm mt-2">
-                      No quotes are pending review.
-                    </p>
-                  </div>
+            {pendingQuotes.length > 0 ? (
+              <Masonry
+                breakpointCols={breakpointColumns}
+                className="flex -ml-[14px] w-auto"
+                columnClassName="pl-[14px] bg-clip-padding"
+              >
+                {pendingQuotes.map((quote: Quote, index: number) => (
+                  <ResearcherQuoteCard
+                    key={quote.id}
+                    quote={{ ...quote, status: 'Pending' }}
+                    onClick={() => handleQuoteClick(index, 'Pending')}
+                    reportId={params.id}
+                    clientId={report?.clientId}
+                    onStatusChange={(newStatus) => handleStatusChange(quote.id, 'Pending', newStatus)}
+                  />
+                ))}
+              </Masonry>
+            ) : (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <p className="text-gray-400 text-lg">No pending quotes found</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    No quotes are pending review.
+                  </p>
                 </div>
-              );
-            })()}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       ) : (
@@ -298,7 +353,7 @@ export default function ReportQuotesPage({ params }: ReportQuotesPageProps) {
         onPrevious={handlePrevious}
         onNext={handleNext}
         hasPrevious={selectedQuoteIndex !== null && selectedQuoteIndex > 0}
-        hasNext={selectedQuoteIndex !== null && quotesWithStatus && selectedQuoteIndex < quotesWithStatus.length - 1}
+        hasNext={selectedQuoteIndex !== null && selectedQuoteIndex < allQuotes.length - 1}
       />
 
       {/* Add Quote Dialog */}

@@ -68,6 +68,8 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, clientId, onStat
   };
 
   const updateQuoteStatus = async (newStatus: 'Published' | 'Approved' | 'Pending') => {
+    if (!clientId) return;
+    
     setIsUpdating(true);
     
     try {
@@ -76,45 +78,29 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, clientId, onStat
         isApproved: newStatus === 'Approved' || newStatus === 'Published'
       };
 
-      // Optimistically update the UI first (immediate feedback)
-      const updatedQuote = {
-        ...quote,
-        status: newStatus,
-        isPublic: updateData.isPublic,
-        isApproved: updateData.isApproved
-      };
-
-      // Update cache optimistically with the new quote data
-      mutate(`/api/reports/${reportId}/quotes`, 
-        (currentData: any) => {
-          if (!currentData) return currentData;
-          return currentData.map((q: any) => q.id === quote.id ? updatedQuote : q);
-        }, 
-        false // Don't revalidate immediately
-      );
-
-      // Switch to the corresponding tab immediately
+      // Call the onStatusChange prop if provided (for optimistic updates)
       if (onStatusChange) {
         onStatusChange(newStatus);
-      }
+      } else {
+        // Fallback: Make the API call directly without optimistic updates
+        const response = await fetch(`/api/clients/${clientId}/reports/${reportId}/quotes/${quote.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData),
+        });
 
-      // Then make the API call in the background
-      const response = await fetch(`/api/quotes/${quote.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update quote status');
-        // If API fails, revert the optimistic update
-        mutate(`/api/reports/${reportId}/quotes`);
+        if (!response.ok) {
+          throw new Error('Failed to update quote status');
+        }
+        
+        // Revalidate all quote lists
+        mutate(`/api/clients/${clientId}/reports/${reportId}/quotes?status=published`);
+        mutate(`/api/clients/${clientId}/reports/${reportId}/quotes?status=approved`);
+        mutate(`/api/clients/${clientId}/reports/${reportId}/quotes?status=pending`);
       }
       
     } catch (error) {
       console.error('Error updating quote status:', error);
-      // Revert optimistic update on error
-      mutate(`/api/reports/${reportId}/quotes`);
     } finally {
       setIsUpdating(false);
     }
@@ -139,6 +125,8 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, clientId, onStat
   };
 
   const handleDeleteQuote = async () => {
+    if (!clientId) return;
+    
     setIsDeleting(true);
     
     try {
@@ -150,19 +138,13 @@ export function ResearcherQuoteCard({ quote, onClick, reportId, clientId, onStat
         throw new Error('Failed to delete quote');
       }
 
-      // Optimistically remove from cache
-      mutate(`/api/reports/${reportId}/quotes`, 
-        (currentData: any) => {
-          if (!currentData) return currentData;
-          return currentData.filter((q: any) => q.id !== quote.id);
-        }, 
-        false
-      );
+      // Revalidate all quote lists
+      mutate(`/api/clients/${clientId}/reports/${reportId}/quotes?status=published`);
+      mutate(`/api/clients/${clientId}/reports/${reportId}/quotes?status=approved`);
+      mutate(`/api/clients/${clientId}/reports/${reportId}/quotes?status=pending`);
 
     } catch (error) {
       console.error('Error deleting quote:', error);
-      // Revert optimistic update on error
-      mutate(`/api/reports/${reportId}/quotes`);
     } finally {
       setIsDeleting(false);
       setIsDeleteDialogOpen(false);

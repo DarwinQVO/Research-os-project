@@ -1,39 +1,35 @@
 import { cn } from '@/lib/utils';
 import { SourceMeta } from '@research-os/db/source';
+import { MoreVertical, ExternalLink, Copy } from 'lucide-react';
+import { useToast } from '@/lib/use-toast';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface SourceCardProps {
   source: SourceMeta;
   onClick: () => void;
+  isSelected?: boolean;
+  hasNewQuotes?: boolean;
 }
 
-export function SourceCard({ source, onClick }: SourceCardProps) {
+export function SourceCard({ source, onClick, isSelected = false, hasNewQuotes = false }: SourceCardProps) {
+  const { toast } = useToast();
   const title = source.title || 'Untitled Source';
   const len = title.length;
   
-  // Adaptive height and font sizing based on title length
-  let sizeClass: string;
-  let heightClass: string;
-  
-  if (len < 50) {
-    // Short titles
-    sizeClass = 'text-[20px] leading-[30px]';
-    heightClass = 'h-[180px]';
-  } else if (len < 100) {
-    // Medium titles
-    sizeClass = 'text-[18px] leading-[27px]';
-    heightClass = 'h-[260px]';
-  } else if (len < 150) {
-    // Long titles
-    sizeClass = 'text-[16px] leading-[24px]';
-    heightClass = 'h-[340px]';
-  } else {
-    // Ultra-long titles
-    sizeClass = 'text-[14px] leading-[21px]';
-    heightClass = 'h-[340px]';
-  }
-  
-  const isUltraLong = len >= 150;
-  
+  const copySourceUrl = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(source.url);
+    toast({
+      title: "Copied!",
+      description: "Source URL copied to clipboard",
+    });
+  };
+
+  const openSource = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(source.url, '_blank');
+  };
+
   // Get domain from URL for favicon
   const getDomain = (url: string) => {
     try {
@@ -45,6 +41,18 @@ export function SourceCard({ source, onClick }: SourceCardProps) {
   
   const domain = getDomain(source.url);
   
+  // Get favicon URL
+  const getFaviconUrl = (url: string) => {
+    try {
+      const domain = new URL(url).hostname;
+      return `https://www.google.com/s2/favicons?domain=${domain}&sz=16`;
+    } catch {
+      return null;
+    }
+  };
+  
+  const faviconUrl = getFaviconUrl(source.url);
+  
   // Type icon mapping
   const getTypeIcon = () => {
     switch (source.type) {
@@ -54,87 +62,107 @@ export function SourceCard({ source, onClick }: SourceCardProps) {
       default: return '🔗';
     }
   };
+
+  // Use mask for long text
+  const shouldUseMask = len > 180;
   
   return (
     <div
       onClick={onClick}
       className={cn(
-        "group relative w-[264px] bg-[#16161c] rounded-2xl px-6 py-8 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:bg-[#1a1a21] hover:ring-1 hover:ring-[#45caff33] break-inside-avoid mb-6",
-        heightClass
+        "group relative w-full bg-[#16161c] rounded-2xl p-5 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-2xl hover:shadow-[#45caff]/10 hover:bg-[#1a1a21] hover:ring-1 hover:ring-[#45caff]/50 hover:scale-[1.02] hover:-translate-y-1",
+        isSelected && "ring-2 ring-[#45caff] bg-[#1a1a21]"
       )}
+      style={{ minHeight: '180px' }}
     >
-      {/* Top quote mark */}
-      <div 
-        className="text-[28px] text-[#a7b4c6] leading-none pointer-events-none text-center -mb-1"
-        style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif'}}
-        aria-hidden="true"
-      >
-        ‟
+      {/* New quotes indicator */}
+      {hasNewQuotes && (
+        <div className="absolute top-3 right-3 w-2 h-2 bg-[#45caff] rounded-full animate-pulse" />
+      )}
+
+      {/* Hover overlay for additional info */}
+      <div className="absolute inset-0 bg-gradient-to-t from-[#1a1a21]/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none" />
+      
+      {/* Kebab menu */}
+      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button 
+              className="p-1 rounded-md hover:bg-[#26262e] transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="w-4 h-4 text-[#a7b4c6]" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48 bg-[#16161c] border-[#26262e]">
+            <DropdownMenuItem onClick={openSource} className="text-[#d4d4e1] hover:bg-[#26262e]">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Open Source
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={copySourceUrl} className="text-[#d4d4e1] hover:bg-[#26262e]">
+              <Copy className="w-4 h-4 mr-2" />
+              Copy Link
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       
       {/* Title content */}
-      <div className="flex-1 flex flex-col justify-center">
-        <div className={cn(
-          "relative overflow-hidden",
-          isUltraLong ? "max-h-[200px]" : ""
-        )}>
-          <h3 className={cn(
-            "font-nunito font-light text-[#a7b4c6] text-center transition-[font-size] duration-200",
-            sizeClass
-          )}>
+      <div className="flex-1 flex flex-col justify-center h-full">
+        <div 
+          className={cn(
+            "relative overflow-hidden",
+            shouldUseMask && "mask-image-gradient"
+          )}
+          style={{ 
+            maxHeight: shouldUseMask ? '240px' : 'none',
+            maskImage: shouldUseMask ? 'linear-gradient(to bottom, #000 70%, transparent)' : 'none'
+          }}
+        >
+          <h3 
+            className="font-nunito font-light text-[#a7b4c6] text-center transition-all duration-300 group-hover:text-[#45caff] group-hover:scale-105"
+            style={{
+              fontSize: 'clamp(16px, 1.4vw, 20px)',
+              lineHeight: '1.4'
+            }}
+          >
             {title}
           </h3>
-          {isUltraLong && (
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#16161c] via-[#16161c]/70 to-transparent" />
-          )}
         </div>
       </div>
       
-      {/* Bottom quote mark - hidden for ultra-long */}
-      {!isUltraLong && (
-        <div 
-          className="text-[28px] text-[#a7b4c6] leading-none pointer-events-none text-center mt-2"
-          style={{fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif', transform: 'scaleX(-1)'}}
-          aria-hidden="true"
-        >
-          ‟
-        </div>
-      )}
-      
       {/* Domain badge - bottom left */}
-      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-[#26262e]/80 backdrop-blur-sm rounded-lg px-3 py-1.5">
-        <div className="w-4 h-4 flex items-center justify-center text-xs">
-          {getTypeIcon()}
+      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-[#26262e]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 transition-all duration-300 group-hover:bg-[#45caff]/20 group-hover:scale-105 group-hover:shadow-lg">
+        <div className="w-4 h-4 flex items-center justify-center">
+          {faviconUrl ? (
+            <img 
+              src={faviconUrl} 
+              alt={`${domain} favicon`}
+              className="w-4 h-4 rounded-sm"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                const nextSibling = e.currentTarget.nextElementSibling as HTMLElement;
+                if (nextSibling) nextSibling.style.display = 'block';
+              }}
+            />
+          ) : null}
+          <div className="text-xs" style={{ display: faviconUrl ? 'none' : 'block' }}>
+            {getTypeIcon()}
+          </div>
         </div>
-        <span className="text-xs font-nunito text-[#a7b4c6] truncate max-w-[120px]">
+        <span className="text-xs font-nunito text-[#a7b4c6] truncate max-w-[120px] transition-colors duration-300 group-hover:text-[#d4d4e1]">
           {domain}
         </span>
       </div>
       
       {/* Quote count badge - bottom right */}
       {source.quoteCount && source.quoteCount > 0 && (
-        <div className="absolute bottom-4 right-4 bg-[#45caff]/10 backdrop-blur-sm rounded-lg px-2 py-1">
-          <span className="text-xs font-nunito text-[#45caff]">
+        <div className="absolute bottom-4 right-4 bg-[#45caff]/10 backdrop-blur-sm rounded-lg px-2 py-1 transition-all duration-300 group-hover:bg-[#45caff]/30 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-[#45caff]/20">
+          <span className="text-xs font-nunito text-[#45caff] transition-colors duration-300 group-hover:text-white">
             {source.quoteCount} quote{source.quoteCount === 1 ? '' : 's'}
           </span>
         </div>
       )}
-      
-      {/* Hover overlay for metadata */}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#1e1e25]/95 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <div className="absolute bottom-16 left-4 right-4">
-          {source.author && (
-            <p className="text-xs text-[#a7b4c6] mb-1 truncate">
-              By {source.author}
-            </p>
-          )}
-          {source.publishedAt && (
-            <p className="text-xs text-[#a7b4c6]/70 truncate">
-              {new Date(source.publishedAt).toLocaleDateString()}
-            </p>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

@@ -6,10 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { QuoteCard } from './_components/QuoteCard';
 import { QuoteDrawer } from './_components/QuoteDrawer';
 import { ThemeToggle } from './_components/ThemeToggle';
-import QuotesSourcesTabs from '../../../../_components/TabsQuotesSources';
+import PortalTabs from '../../../../_components/TabsQuotesSources';
 import { SourceCard } from '../../../../_components/SourceCard';
 import { SourceDetail } from '../../../../_components/SourceDetail';
+import { EntityCard } from '../../../../_components/EntityCard';
+import { EntityDrawer } from './entities/EntityDrawer';
 import { SourceMeta } from '@research-os/db/source';
+import { Entity } from '@research-os/db/entity';
 
 const fetcher = async (url: string) => {
   try {
@@ -68,9 +71,11 @@ export default function PortalPage({ params }: PortalPageProps) {
   const [selectedQuoteIndex, setSelectedQuoteIndex] = useState<number | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [resolvedParams, setResolvedParams] = useState<{ cid: string; rid: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<'quotes' | 'sources'>('quotes');
+  const [activeTab, setActiveTab] = useState<'quotes' | 'sources' | 'entities'>('quotes');
   const [selectedSource, setSelectedSource] = useState<SourceMeta | null>(null);
   const [isSourceDetailOpen, setIsSourceDetailOpen] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+  const [isEntityDrawerOpen, setIsEntityDrawerOpen] = useState(false);
 
   // Handle async params
   useEffect(() => {
@@ -84,6 +89,11 @@ export default function PortalPage({ params }: PortalPageProps) {
 
   const { data: sources, error: sourcesError, isLoading: sourcesLoading } = useSWR(
     resolvedParams ? `/api/portal/reports/${resolvedParams.rid}/sources` : null,
+    fetcher
+  );
+
+  const { data: entities, error: entitiesError, isLoading: entitiesLoading } = useSWR(
+    resolvedParams ? `/api/reports/${resolvedParams.rid}/entities?public=1` : null,
     fetcher
   );
 
@@ -116,9 +126,17 @@ export default function PortalPage({ params }: PortalPageProps) {
     setIsSourceDetailOpen(true);
   };
 
-  const isLoading = activeTab === 'quotes' ? quotesLoading : sourcesLoading;
-  const error = activeTab === 'quotes' ? quotesError : sourcesError;
-  const currentData = activeTab === 'quotes' ? publishedQuotes : sources;
+  const handleEntityClick = (entity: Entity) => {
+    setSelectedEntity(entity);
+    setIsEntityDrawerOpen(true);
+  };
+
+  const isLoading = activeTab === 'quotes' ? quotesLoading : 
+                   activeTab === 'sources' ? sourcesLoading : entitiesLoading;
+  const error = activeTab === 'quotes' ? quotesError : 
+               activeTab === 'sources' ? sourcesError : entitiesError;
+  const currentData = activeTab === 'quotes' ? publishedQuotes : 
+                     activeTab === 'sources' ? sources : entities;
 
   const selectedQuote = selectedQuoteIndex !== null && publishedQuotes ? publishedQuotes[selectedQuoteIndex] : null;
 
@@ -139,7 +157,8 @@ export default function PortalPage({ params }: PortalPageProps) {
       <div className="min-h-screen bg-[#0a0a0f] text-gray-100 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">
-            {activeTab === 'quotes' ? 'Quote Library' : 'Source Library'}
+            {activeTab === 'quotes' ? 'Quote Library' : 
+             activeTab === 'sources' ? 'Source Library' : 'Entity Library'}
           </h1>
           <p className="text-gray-400">
             {(error as any)?.status === 404 
@@ -155,12 +174,15 @@ export default function PortalPage({ params }: PortalPageProps) {
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-gray-100">
       {/* Navigation Header */}
-      <header className="flex justify-start items-center gap-10 px-6 h-[56px] border-b border-[#26262e] sticky top-0 z-40">
-        <h1 className="font-lora font-light text-[28px] text-[#d4d4e1]">
-          {activeTab === 'quotes' ? 'Quote Library' : 'Source Library'}
-        </h1>
+      <header className="flex justify-start items-center gap-10 px-6 h-[56px] relative sticky top-0 z-40 bg-[#0a0a0f]">
+        <div className="relative overflow-hidden rounded-lg bg-gradient-to-b from-[#2a2a35] via-[#1e1e25] to-[#16161c] px-4 py-2">
+          <h1 className="font-lora font-light text-[28px] text-[#d4d4e1]">
+            {activeTab === 'quotes' ? 'Quote Library' : 
+             activeTab === 'sources' ? 'Source Library' : 'Entity Library'}
+          </h1>
+        </div>
         
-        <QuotesSourcesTabs 
+        <PortalTabs 
           value={activeTab} 
           onChange={(newTab) => {
             setActiveTab(newTab);
@@ -179,7 +201,7 @@ export default function PortalPage({ params }: PortalPageProps) {
       </header>
 
       {/* Main Content */}
-      <main className="px-8 md:px-12 lg:px-24 py-8">
+      <main className="px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 2xl:px-24 py-6 sm:py-8">
         <AnimatePresence mode="wait">
           {isLoading ? (
             <motion.div 
@@ -193,7 +215,7 @@ export default function PortalPage({ params }: PortalPageProps) {
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-100 mx-auto mb-4"></div>
                 <p className="text-gray-400">
-                  Loading {activeTab === 'quotes' ? 'quotes' : 'sources'}...
+                  Loading {activeTab}...
                 </p>
               </div>
             </motion.div>
@@ -204,7 +226,7 @@ export default function PortalPage({ params }: PortalPageProps) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -12 }}
               transition={{ duration: 0.15 }}
-              className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-x-6 space-y-6 max-w-[1440px] mx-auto"
+              className="portal-card-spacing columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 space-y-4 sm:space-y-5 md:space-y-6 max-w-[1440px] mx-auto"
             >
               {activeTab === 'quotes' ? (
                 publishedQuotes?.map((quote: Quote, index: number) => (
@@ -214,12 +236,20 @@ export default function PortalPage({ params }: PortalPageProps) {
                     onClick={() => handleQuoteClick(index)}
                   />
                 ))
-              ) : (
+              ) : activeTab === 'sources' ? (
                 sources?.map((source: SourceMeta) => (
                   <SourceCard
                     key={source.id}
                     source={source}
                     onClick={() => handleSourceClick(source)}
+                  />
+                ))
+              ) : (
+                entities?.map((entity: Entity) => (
+                  <EntityCard
+                    key={entity.id}
+                    entity={entity}
+                    onClick={() => handleEntityClick(entity)}
                   />
                 ))
               )}
@@ -265,6 +295,13 @@ export default function PortalPage({ params }: PortalPageProps) {
           onOpenChange={setIsSourceDetailOpen}
         />
       )}
+
+      {/* Entity Drawer */}
+      <EntityDrawer
+        entity={selectedEntity}
+        isOpen={isEntityDrawerOpen}
+        onClose={() => setIsEntityDrawerOpen(false)}
+      />
     </div>
   );
 }

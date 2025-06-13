@@ -1,15 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Search, ExternalLink, Share2, Copy, Check, Plus } from 'lucide-react';
+import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { ArrowLeft, Search, ExternalLink, Share2, Check, Settings } from 'lucide-react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { ConfirmEntityDialog } from './_components/ConfirmEntityDialog';
-import { AddQuoteDialog } from './_components/AddQuoteDialog';
-import { SourcesSection } from './_components/SourcesSection';
+import { ModerationView } from './_components/ModerationView';
 import { EntitiesSection } from './_components/EntitiesSection';
+import { Toaster } from '@/components/ui/toaster';
+import type { SourceMeta } from '@research-os/db/source';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -19,8 +21,9 @@ interface ReportDetailPageProps {
 
 export default function ReportDetailPage({ params }: ReportDetailPageProps) {
   const [isEntityDialogOpen, setIsEntityDialogOpen] = useState(false);
-  const [isAddQuoteOpen, setIsAddQuoteOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isModerationOpen, setIsModerationOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
   
   // Fetch the actual report data
   const { data: report, error: reportError, isLoading: isReportLoading } = useSWR(
@@ -42,6 +45,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
     `/api/reports/${params.id}/entity`, 
     fetcher
   );
+
 
   // Generate portal URL
   const portalUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/portal/clients/${reportData.clientId}/reports/${params.id}`;
@@ -71,6 +75,26 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
       handleCopyPortalLink();
     }
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Meta/Ctrl + K to open command palette
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandOpen(true);
+      }
+      
+      // M to open moderation view
+      if (e.key === 'm' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setIsModerationOpen(true);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <main className="container mx-auto p-6">
@@ -138,17 +162,13 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
 
       {/* Actions Section */}
       <div className="flex justify-end gap-2 mb-6">
-        <Link href={`/reports/${params.id}/quotes`}>
-          <Button variant="outline" className="flex items-center gap-2">
-            📚 View Quotes
-          </Button>
-        </Link>
-        <Button 
-          onClick={() => setIsAddQuoteOpen(true)}
+        <Button
+          onClick={() => setIsModerationOpen(true)}
+          variant="outline"
           className="flex items-center gap-2"
         >
-          <Plus className="h-4 w-4" />
-          Add Quote
+          <Settings className="h-4 w-4" />
+          Moderate
         </Button>
       </div>
 
@@ -161,10 +181,6 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
         </div>
         
         <div className="lg:col-span-1 space-y-6">
-          <SourcesSection 
-            reportId={params.id} 
-            clientId={reportData.clientId}
-          />
           <EntitiesSection 
             reportId={params.id} 
             clientId={reportData.clientId}
@@ -172,6 +188,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
         </div>
       </div>
 
+      {/* Dialogs and Sheets */}
       <ConfirmEntityDialog
         open={isEntityDialogOpen}
         onOpenChange={setIsEntityDialogOpen}
@@ -179,12 +196,45 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
         reportTitle={reportData.title}
       />
 
-      <AddQuoteDialog
+      <ModerationView
         reportId={params.id}
         clientId={reportData.clientId}
-        open={isAddQuoteOpen}
-        onOpenChange={setIsAddQuoteOpen}
+        open={isModerationOpen}
+        onOpenChange={setIsModerationOpen}
       />
+
+
+      {/* Command Palette */}
+      <CommandDialog open={isCommandOpen} onOpenChange={setIsCommandOpen}>
+        <CommandInput placeholder="Type a command..." />
+        <CommandList>
+          <CommandEmpty>No commands found.</CommandEmpty>
+          <CommandGroup heading="Actions">
+            <CommandItem onSelect={() => {
+              setIsModerationOpen(true);
+              setIsCommandOpen(false);
+            }}>
+              <Settings className="h-4 w-4 mr-2" />
+              Open Moderation Panel
+            </CommandItem>
+            <CommandItem onSelect={() => {
+              window.location.href = `/reports/${params.id}/quotes`;
+              setIsCommandOpen(false);
+            }}>
+              View All Quotes
+            </CommandItem>
+            <CommandItem onSelect={() => {
+              handleCopyPortalLink();
+              setIsCommandOpen(false);
+            }}>
+              <Share2 className="h-4 w-4 mr-2" />
+              Copy Portal Link
+            </CommandItem>
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
+
+      <Toaster />
     </main>
   );
 }

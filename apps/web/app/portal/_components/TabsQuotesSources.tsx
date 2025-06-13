@@ -2,16 +2,25 @@
 
 import { cn } from '@/lib/utils';
 
-export default function QuotesSourcesTabs({
+export default function PortalTabs({
   value,
   onChange,
 }: {
-  value: 'quotes' | 'sources';
-  onChange: (v: 'quotes' | 'sources') => void;
+  value: 'quotes' | 'sources' | 'entities';
+  onChange: (v: 'quotes' | 'sources' | 'entities') => void;
 }) {
+  const getTabLabel = (tab: string) => {
+    switch (tab) {
+      case 'quotes': return 'Quotes';
+      case 'sources': return 'Sources';
+      case 'entities': return 'Entities';
+      default: return tab;
+    }
+  };
+
   return (
     <nav className="flex gap-8">
-      {(['quotes', 'sources'] as const).map((tab) => (
+      {(['quotes', 'sources', 'entities'] as const).map((tab) => (
         <button
           key={tab}
           onClick={() => onChange(tab)}
@@ -22,7 +31,7 @@ export default function QuotesSourcesTabs({
               : 'text-[#8e9db4] hover:text-[#d4d4e1]'
           )}
         >
-          {tab === 'quotes' ? 'Quotes' : 'Sources'}
+          {getTabLabel(tab)}
           {/* underline */}
           {value === tab && (
             <span className="absolute -bottom-0.5 left-0 h-[2px] w-full bg-[#45caff] rounded-full" />

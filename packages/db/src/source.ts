@@ -1,5 +1,7 @@
 import { getDriver } from './index';
 
+export type SourceStatus = 'pending' | 'approved' | 'published';
+
 export interface SourceInput {
   url: string;
   title: string;
@@ -8,6 +10,7 @@ export interface SourceInput {
   type: 'article' | 'video' | 'social' | 'other';
   description?: string;
   thumbnail?: string;
+  status?: SourceStatus;
 }
 
 export async function createSource(reportId: string, data: SourceInput) {
@@ -26,10 +29,11 @@ export async function createSource(reportId: string, data: SourceInput) {
          type: $type,
          description: $description,
          thumbnail: $thumbnail,
+         status: $status,
          createdAt: datetime()
        })
        MERGE (r)-[:HAS_SOURCE]->(s)
-       RETURN s {.*}`,
+       RETURN s { .*, status: s.status, createdAt: toString(s.createdAt) }`,
       { 
         rid: reportId, 
         url: data.url,
@@ -38,7 +42,8 @@ export async function createSource(reportId: string, data: SourceInput) {
         publishedAt: data.publishedAt || null,
         type: data.type || 'article',
         description: data.description || null,
-        thumbnail: data.thumbnail || null
+        thumbnail: data.thumbnail || null,
+        status: data.status || 'pending'
       }
     );
     
@@ -48,16 +53,18 @@ export async function createSource(reportId: string, data: SourceInput) {
   }
 }
 
-export async function getSources(reportId: string) {
+export async function getSources(reportId: string, status?: SourceStatus) {
   const driver = getDriver();
   const session = driver.session();
   
   try {
+    const whereClause = status ? 'WHERE COALESCE(s.status, "pending") = $status' : '';
     const result = await session.run(
       `MATCH (r:Report {id: $rid})-[:HAS_SOURCE]->(s:Source)
-       RETURN s { .*, createdAt: toString(s.createdAt) } AS s
+       ${whereClause}
+       RETURN s { .*, status: COALESCE(s.status, 'pending'), createdAt: toString(s.createdAt) } AS s
        ORDER BY s.createdAt DESC`,
-      { rid: reportId }
+      { rid: reportId, status }
     );
     
     return result.records.map(record => record.get('s'));
@@ -73,7 +80,7 @@ export async function getSource(sourceId: string) {
   try {
     const result = await session.run(
       `MATCH (s:Source {id: $sid})
-       RETURN s {.*} LIMIT 1`,
+       RETURN s { .*, status: COALESCE(s.status, 'pending'), createdAt: toString(s.createdAt) } LIMIT 1`,
       { sid: sourceId }
     );
     
@@ -110,13 +117,18 @@ export async function getQuotesFromSource(sourceId: string) {
   
   try {
     const result = await session.run(
-      `MATCH (s:Source {id: $sid})<-[:FROM_SOURCE]-(q:Quote)
-       RETURN q { .*, createdAt: toString(q.createdAt) } AS q
-       ORDER BY q.createdAt DESC`,
+      `MATCH (s:Source {id: $sid})<-[:CITES]-(q:Quote)
+       OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
+       RETURN q { 
+         .*, 
+         createdAt: toString(q.createdAt),
+         speaker: e.name
+       } AS quote
+       ORDER BY quote.createdAt DESC`,
       { sid: sourceId }
     );
     
-    return result.records.map(record => record.get('q'));
+    return result.records.map(record => record.get('quote'));
   } finally {
     await session.close();
   }
@@ -127,17 +139,57 @@ export async function updateSource(id: string, data: Partial<SourceInput>) {
   const session = driver.session();
   
   try {
+    const params: any = { id };
+    const setClauses: string[] = [];
+    
+    // Only include fields that are provided
+    if (data.url !== undefined) {
+      params.url = data.url;
+      setClauses.push('s.url = $url');
+    }
+    if (data.title !== undefined) {
+      params.title = data.title;
+      setClauses.push('s.title = $title');
+    }
+    if (data.author !== undefined) {
+      params.author = data.author;
+      setClauses.push('s.author = $author');
+    }
+    if (data.publishedAt !== undefined) {
+      params.publishedAt = data.publishedAt;
+      setClauses.push('s.publishedAt = $publishedAt');
+    }
+    if (data.type !== undefined) {
+      params.type = data.type;
+      setClauses.push('s.type = $type');
+    }
+    if (data.description !== undefined) {
+      params.description = data.description;
+      setClauses.push('s.description = $description');
+    }
+    if (data.thumbnail !== undefined) {
+      params.thumbnail = data.thumbnail;
+      setClauses.push('s.thumbnail = $thumbnail');
+    }
+    if (data.status !== undefined) {
+      params.status = data.status;
+      setClauses.push('s.status = $status');
+    }
+    
+    if (setClauses.length === 0) {
+      // No updates to make, just return the existing source
+      const result = await session.run(
+        'MATCH (s:Source {id: $id}) RETURN s { .*, status: COALESCE(s.status, "pending"), createdAt: toString(s.createdAt) }',
+        { id }
+      );
+      return result.records[0]?.get(0) || null;
+    }
+    
     const result = await session.run(
-      'MATCH (s:Source {id: $id}) ' +
-      'SET s.url = COALESCE($url, s.url), ' +
-      's.title = COALESCE($title, s.title), ' +
-      's.author = COALESCE($author, s.author), ' +
-      's.publishedAt = COALESCE($publishedAt, s.publishedAt), ' +
-      's.type = COALESCE($type, s.type), ' +
-      's.description = COALESCE($description, s.description), ' +
-      's.thumbnail = COALESCE($thumbnail, s.thumbnail) ' +
-      'RETURN s {.*}',
-      { id, ...data }
+      `MATCH (s:Source {id: $id}) 
+       SET ${setClauses.join(', ')}
+       RETURN s { .*, status: COALESCE(s.status, "pending"), createdAt: toString(s.createdAt) }`,
+      params
     );
     
     return result.records[0]?.get(0) || null;
@@ -170,7 +222,7 @@ export interface SourceMeta {
   type: 'article' | 'video' | 'social' | 'other';
   description?: string;
   thumbnail?: string;
-  isPublic?: boolean;
+  status?: SourceStatus;
   createdAt: string;
   quoteCount?: number;
 }
@@ -182,18 +234,27 @@ export async function getPublishedSources(reportId: string): Promise<SourceMeta[
   try {
     const result = await session.run(
       `MATCH (r:Report {id: $reportId})-[:HAS_SOURCE]->(s:Source)
+       WHERE COALESCE(s.status, 'pending') = 'published'
        OPTIONAL MATCH (s)<-[:CITES]-(q:Quote)
+       WITH s, count(q) AS quoteCount
        RETURN s { 
          .*, 
-         createdAt: toString(s.createdAt),
-         quoteCount: count(q),
-         isPublic: COALESCE(s.isPublic, true)
-       } AS source
+         status: COALESCE(s.status, 'pending'),
+         createdAt: toString(s.createdAt)
+       } AS source,
+       quoteCount
        ORDER BY source.createdAt DESC`,
       { reportId }
     );
     
-    return result.records.map(record => record.get('source'));
+    return result.records.map(record => {
+      const source = record.get('source');
+      const quoteCount = record.get('quoteCount');
+      return {
+        ...source,
+        quoteCount: quoteCount?.toNumber ? quoteCount.toNumber() : quoteCount
+      };
+    });
   } finally {
     await session.close();
   }
@@ -210,10 +271,10 @@ export async function getSourceContent(sourceId: string): Promise<SourceContent>
   const session = driver.session();
   
   try {
-    // Get quotes from this source
+    // Get quotes from this source (only published ones)
     const quotesResult = await session.run(
       `MATCH (s:Source {id: $sourceId})<-[:CITES]-(q:Quote)
-       WHERE COALESCE(q.isPublic, true) = true
+       WHERE q.isPublic = true AND q.isApproved = true
        OPTIONAL MATCH (q)-[:QUOTE_OF]->(e:Entity)
        RETURN q { 
          .*, 
@@ -225,11 +286,14 @@ export async function getSourceContent(sourceId: string): Promise<SourceContent>
       { sourceId }
     );
     
-    // Get entities mentioned in quotes from this source
+    // Get entities mentioned in quotes from this source (only published entities and quotes)
     const entitiesResult = await session.run(
       `MATCH (s:Source {id: $sourceId})<-[:CITES]-(q:Quote)-[:QUOTE_OF]->(e:Entity)
-       RETURN DISTINCT e { .*, createdAt: toString(e.createdAt) } AS entity
-       ORDER BY e.name`,
+       WHERE q.isPublic = true AND q.isApproved = true
+       AND COALESCE(e.status, 'pending') = 'published'
+       WITH DISTINCT e
+       RETURN e { .*, createdAt: toString(e.createdAt) } AS entity
+       ORDER BY entity.name`,
       { sourceId }
     );
     

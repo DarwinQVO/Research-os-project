@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, Globe, Video, FileText, Hash, ExternalLink, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Globe, Video, FileText, Hash, ExternalLink, MoreHorizontal, Edit, Trash2, Settings } from 'lucide-react';
 import { AddSourceDialog } from './AddSourceDialog';
 import { EditSourceDialog } from './EditSourceDialog';
+import Link from 'next/link';
 import useSWR, { mutate } from 'swr';
 import {
   DropdownMenu,
@@ -32,6 +34,7 @@ interface Source {
   type: 'article' | 'video' | 'social' | 'other';
   description?: string;
   thumbnail?: string;
+  status?: 'pending' | 'approved' | 'published';
   createdAt: string;
 }
 
@@ -49,9 +52,14 @@ export function SourcesSection({ reportId, clientId }: SourcesSectionProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   
   const { data: sources, error } = useSWR<Source[]>(
-    `/api/clients/${clientId}/reports/${reportId}/sources`,
+    `/api/reports/${reportId}/sources`,
     fetcher
   );
+
+  // Get counts for different statuses
+  const pendingSources = sources?.filter(s => (s.status || 'pending') === 'pending') || [];
+  const approvedSources = sources?.filter(s => s.status === 'approved') || [];
+  const publishedSources = sources?.filter(s => s.status === 'published') || [];
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -95,7 +103,7 @@ export function SourcesSection({ reportId, clientId }: SourcesSectionProps) {
       }
 
       // Optimistically remove from cache
-      mutate(`/api/clients/${clientId}/reports/${reportId}/sources`, 
+      mutate(`/api/reports/${reportId}/sources`, 
         (currentData: Source[] | undefined) => {
           if (!currentData) return currentData;
           return currentData.filter((s: Source) => s.id !== deleteDialogSource.id);
@@ -106,7 +114,7 @@ export function SourcesSection({ reportId, clientId }: SourcesSectionProps) {
     } catch (error) {
       console.error('Error deleting source:', error);
       // Revert optimistic update on error
-      mutate(`/api/clients/${clientId}/reports/${reportId}/sources`);
+      mutate(`/api/reports/${reportId}/sources`);
     } finally {
       setIsDeleting(false);
       setDeleteDialogSource(null);
@@ -124,14 +132,40 @@ export function SourcesSection({ reportId, clientId }: SourcesSectionProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Sources</h2>
-        <Button
-          size="sm"
-          onClick={() => setIsAddDialogOpen(true)}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Add Source
-        </Button>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">Sources</h2>
+          {sources && sources.length > 0 && (
+            <div className="flex items-center gap-2">
+              {pendingSources.length > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {pendingSources.length} pending
+                </Badge>
+              )}
+              {publishedSources.length > 0 && (
+                <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                  {publishedSources.length} published
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {sources && sources.length > 0 && (
+            <Link href={`/reports/${reportId}/sources`}>
+              <Button variant="outline" size="sm">
+                <Settings className="h-4 w-4 mr-1" />
+                Moderate
+              </Button>
+            </Link>
+          )}
+          <Button
+            size="sm"
+            onClick={() => setIsAddDialogOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Source
+          </Button>
+        </div>
       </div>
 
       {!sources ? (
@@ -170,6 +204,20 @@ export function SourcesSection({ reportId, clientId }: SourcesSectionProps) {
                         {source.author && <span>{source.author}</span>}
                         {source.author && source.publishedAt && <span>•</span>}
                         {source.publishedAt && <span>{formatDate(source.publishedAt)}</span>}
+                        {(source.author || source.publishedAt) && <span>•</span>}
+                        <Badge 
+                          variant={
+                            (source.status || 'pending') === 'published' ? 'default' : 
+                            source.status === 'approved' ? 'secondary' : 'outline'
+                          }
+                          className={`text-xs ${
+                            (source.status || 'pending') === 'published' ? 'bg-green-100 text-green-700 border-green-200' :
+                            source.status === 'approved' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                            'bg-gray-100 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          {source.status || 'pending'}
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-1 mt-2">
                         <a

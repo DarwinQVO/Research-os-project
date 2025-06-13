@@ -21,14 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { EditEntityDialog } from './EditEntityDialog';
-
-interface Entity {
-  id: string;
-  name: string;
-  type: 'person' | 'company' | 'industry' | 'other';
-  primaryUrl?: string;
-  confidence?: number;
-}
+import { Entity } from '@research-os/db/entity';
 
 interface EntitiesSectionProps {
   clientId: string;
@@ -171,7 +164,6 @@ export function EntitiesSection({ clientId, reportId }: EntitiesSectionProps) {
       {editEntity && (
         <EditEntityDialog
           reportId={reportId}
-          clientId={clientId}
           entity={editEntity}
           open={!!editEntity}
           onOpenChange={(open) => !open && setEditEntity(null)}
